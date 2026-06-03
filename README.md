@@ -135,4 +135,9 @@ If you wish to contribute to Mobile OS:
 1. Refer to [cloude.md](cloude.md) for strict memory layout and coding guidelines.
 2. Check [progress.md](progress.md) to inspect active sprint goals and unimplemented modules.
 3. Open a Pull Request conforming to standards defined in `CONTRIBUTING.md`.
-# mobil_os
+## 📄 License & Copyright
+
+Copyright © 2026 mcsimon. All rights reserved.
+
+This project belongs to **mcsimon** and is licensed under the Apache License, Version 2.0. For the complete licensing terms, see the [LICENSE](LICENSE) file.
+
