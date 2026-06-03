@@ -96,30 +96,29 @@ fi
 # Kernel console append args
 KERNEL_CMDLINE="console=$SYSTEM_CONSOLE earlycon panic=5"
 
-# 5. Scan for kernel & optional rootfs
-echo "🔍 [INFO] Scanning for kernel & rootfs binaries..."
+# 5. Scan for kernel & initramfs
+echo "🔍 [INFO] Scanning for kernel & initramfs..."
 KERNEL_IMAGE="${WORKSPACE_DIR}/out/kernel/Image"
-ROOTFS_IMAGE="${WORKSPACE_DIR}/out/rootfs.ext4"
+INITRAMFS="${WORKSPACE_DIR}/out/initramfs.cpio.gz"
 
 if [ ! -f "$KERNEL_IMAGE" ]; then
     echo "⚠️  [WARN] Kernel image not found at: $KERNEL_IMAGE"
     echo "          Please run: ./scripts/download-kernel.sh"
-    echo "          (Running in verification/dry-run configuration)"
     DRY_RUN=true
 fi
 
-# Attach rootfs only if it exists
-if [ -f "$ROOTFS_IMAGE" ]; then
-    echo "💾 [INFO] Rootfs found: $ROOTFS_IMAGE"
-    QEMU_ARGS+=(
-        "-drive" "file=${ROOTFS_IMAGE},format=raw,if=virtio"
-    )
-    KERNEL_CMDLINE+=" root=/dev/vda rw init=/system/bin/init"
-else
-    echo "⚠️  [INFO] No rootfs image found — booting kernel only (expect kernel panic, normal for first boot)"
+if [ ! -f "$INITRAMFS" ]; then
+    echo "⚠️  [WARN] Initramfs not found. Building now..."
+    if [ -x "${WORKSPACE_DIR}/scripts/make-rootfs.sh" ]; then
+        "${WORKSPACE_DIR}/scripts/make-rootfs.sh"
+    else
+        echo "❌ [ERROR] make-rootfs.sh not found!"
+        DRY_RUN=true
+    fi
 fi
 
-QEMU_ARGS+=("-append" "$KERNEL_CMDLINE")
+QEMU_ARGS+=("-initrd" "$INITRAMFS")
+QEMU_ARGS+=("-append" "console=$SYSTEM_CONSOLE earlycon rdinit=/init panic=10")
 
 # 6. Run or Dry-Run Execution
 if [ "$DRY_RUN" = true ]; then

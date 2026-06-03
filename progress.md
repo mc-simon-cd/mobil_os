@@ -57,12 +57,13 @@ gantt
 - [x] **Milestone 10: Kernel Acquisition**
   - [x] Create `scripts/download-kernel.sh` to fetch precompiled Debian ARM64 kernel
   - [x] Successfully downloaded ARM64 Linux kernel image (`out/kernel/Image`, 36 MB)
-- [x] **Milestone 11: QEMU First Boot**
+- [x] **Milestone 11: QEMU First Boot ✅**
   - [x] Fix QEMU port conflict — migrated to fixed port `9595` (HTTP: host→guest:8080)
-  - [x] Update `scripts/qemu-run.sh` with optional rootfs detection and auto port config
+  - [x] Update `scripts/qemu-run.sh` with initramfs approach (no block device driver needed)
+  - [x] Create `scripts/make-rootfs.sh` — builds minimal ARM64 rootfs + cpio initramfs
   - [x] ARM64 kernel successfully boots in QEMU (`cortex-a72`, 4 core, 2GB RAM)
-  - [x] Kernel output confirmed: PSCI, KPTI, Spectre mitigations, NUMA, DMA zones
-  - [ ] Build rootfs ext4 image for full userspace boot
+  - [x] **Mobile OS `init` engine runs as PID 1** — `/proc`, `/sys`, `/dev`, `/tmp` mounted
+  - [x] `init.rc` parsed and `on boot` event block processed successfully
 
 ---
 
@@ -99,7 +100,9 @@ gantt
 ## 🚀 Active Sprint Goals
 * [x] Completed Milestone 9: Multi-Language Application Support & Runtimes.
 * [x] Completed Milestone 10: ARM64 kernel downloaded (36 MB, Debian netboot).
-* [x] Completed Milestone 11: QEMU first boot — kernel boots successfully on `cortex-a72`.
-* [x] Port konfigürasyonu: `host:9595 → guest:8080` (HTTP) sabitlendi.
-* [ ] **Milestone 12:** Build minimal rootfs ext4 image for full userspace boot.
-* [ ] **Milestone 12:** Boot into `/system/bin/init` inside QEMU with full IPC stack.
+* [x] Completed Milestone 11: **Mobile OS init engine boots as PID 1 in QEMU!** 🎉
+  * Initramfs (cpio.gz) yaklaşımıyla disk driver sorunu aşıldı.
+  * `/proc`, `/sys`, `/dev`, `/tmp` başarıyla mount edildi.
+  * `init.rc` parse edildi, `on boot` event bloğu işlendi.
+* [ ] **Milestone 12:** `servicemanager` ve `powermanager` daemon'larını QEMU içinde ayağa kaldır.
+* [ ] **Milestone 12:** `apigateway`'i QEMU içinde başlat, host:9595 → guest:8080 tüneli test et.
