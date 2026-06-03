@@ -12,13 +12,18 @@ gantt
     dateFormat  YYYY-MM-DD
     section Boot & Base
     QEMU Board & Init Boot        :done, 2026-06-01, 1d
+    Kernel Download (ARM64)       :done, 2026-06-03, 1d
+    QEMU First Boot               :done, 2026-06-03, 1d
     section IPC & Services
     libipc & servicemanager       :done, 2026-06-01, 1d
     section Graphic Server
-    surfaceflinger / wlroots     :active, 2026-06-01, 2d
+    surfaceflinger / wlroots     :done, 2026-06-01, 2d
     section Shell & Apps
-    Statusbar, Launcher, Settings :active, 2026-06-01, 2d
+    Statusbar, Launcher, Settings :done, 2026-06-01, 2d
     Multi-Lang Runtimes & Apps    :done, 2026-06-03, 1d
+    section Emulation
+    QEMU Network & Port Config    :done, 2026-06-03, 1d
+    Rootfs & Full Boot            :active, 2026-06-04, 3d
 ```
 
 - [x] **Milestone 1: Bootable Emulator Image (QEMU-ARM64)**
@@ -49,6 +54,15 @@ gantt
   - [x] Create Control Center dashboard `control_center` static Web App with responsive glassmorphism styles, input key injection, and real-time status polling
   - [x] Integrate runtimes launcher in build system and package locale overlays
   - [x] Validate all 4 application runtime integrations via automated host testing
+- [x] **Milestone 10: Kernel Acquisition**
+  - [x] Create `scripts/download-kernel.sh` to fetch precompiled Debian ARM64 kernel
+  - [x] Successfully downloaded ARM64 Linux kernel image (`out/kernel/Image`, 36 MB)
+- [x] **Milestone 11: QEMU First Boot**
+  - [x] Fix QEMU port conflict — migrated to fixed port `9595` (HTTP: host→guest:8080)
+  - [x] Update `scripts/qemu-run.sh` with optional rootfs detection and auto port config
+  - [x] ARM64 kernel successfully boots in QEMU (`cortex-a72`, 4 core, 2GB RAM)
+  - [x] Kernel output confirmed: PSCI, KPTI, Spectre mitigations, NUMA, DMA zones
+  - [ ] Build rootfs ext4 image for full userspace boot
 
 ---
 
@@ -75,9 +89,17 @@ gantt
 | **Dialer App** | `apps/dialer/`     | 🟢 *Complete* | C-based telephone keypad dialing application |
 | **System Apps** | `rootfs/system/apps/` | 🟢 *Complete* | Multi-language apps (Python, JS, Web Control Center) |
 | **Detailed Setup Guide** | `install.md`       | 🟢 *Complete* | Setup, runtimes, and integration testing instructions |
+| **Kernel Image** | `out/kernel/Image` | 🟢 *Complete* | Precompiled ARM64 Linux kernel (36 MB, Debian netboot) |
+| **QEMU Boot Script** | `scripts/qemu-run.sh` | 🟢 *Complete* | Auto port config, optional rootfs, headless & GUI modes |
+| **Kernel Downloader** | `scripts/download-kernel.sh` | 🟢 *Complete* | Fetches ARM64 kernel from Debian netboot repository |
+| **Rootfs Image** | `out/rootfs.ext4` | 🔴 *Pending* | ext4 disk image for full userspace boot |
 
 ---
 
 ## 🚀 Active Sprint Goals
-* [x] Completed Milestone 9: Multi-Language Application Support & Runtimes (unified Rust `apprunner` and modular Python, JS, Web apps).
-* [x] Completed Milestone 3 & 4 follow-ups (software layer composition in `surfaceflinger` and native Settings/Dialer applications).
+* [x] Completed Milestone 9: Multi-Language Application Support & Runtimes.
+* [x] Completed Milestone 10: ARM64 kernel downloaded (36 MB, Debian netboot).
+* [x] Completed Milestone 11: QEMU first boot — kernel boots successfully on `cortex-a72`.
+* [x] Port konfigürasyonu: `host:9595 → guest:8080` (HTTP) sabitlendi.
+* [ ] **Milestone 12:** Build minimal rootfs ext4 image for full userspace boot.
+* [ ] **Milestone 12:** Boot into `/system/bin/init` inside QEMU with full IPC stack.

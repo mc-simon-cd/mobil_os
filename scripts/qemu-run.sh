@@ -66,48 +66,71 @@ echo "   RAM:     $QEMU_RAM"
 echo "   Console: $SYSTEM_CONSOLE"
 echo "============================================="
 
-# 3. Construct QEMU commands
+# 3. Port configuration
+HOST_HTTP_PORT=9595   # host:9595  → guest:8080  (HTTP / web server)
+echo "🌐 [NET] Port mapping: host:${HOST_HTTP_PORT} → guest:8080 (HTTP)"
+
+# 4. Construct QEMU commands
 QEMU_ARGS=(
     "-M" "$QEMU_MACHINE"
     "-cpu" "$QEMU_CPU"
     "-smp" "$QEMU_CORES"
     "-m" "$QEMU_RAM"
-    "-netdev" "user,id=net0,hostfwd=tcp::8080-:8080"
+    "-netdev" "user,id=net0,hostfwd=tcp::${HOST_HTTP_PORT}-:8080"
     "-device" "virtio-net-device,netdev=net0"
 )
 
 if [ "$HEADLESS" = true ]; then
     QEMU_ARGS+=("-nographic")
-    QEMU_ARGS+=("-append" "console=$SYSTEM_CONSOLE init=/system/bin/init root=/dev/vda rw")
+    QEMU_ARGS+=("-serial" "mon:stdio")
 else
     QEMU_ARGS+=("-device" "$QEMU_DISPLAY")
-    QEMU_ARGS+=("-append" "console=$SYSTEM_CONSOLE init=/system/bin/init root=/dev/vda rw quiet logo.nologo")
     # For fully visual support, fall back dynamically if host X11 is not available
     if [ -z "${DISPLAY:-}" ]; then
         echo "⚠️  [WARN] No host DISPLAY variable detected. Forcing headless mode..."
         QEMU_ARGS+=("-nographic")
+        QEMU_ARGS+=("-serial" "mon:stdio")
     fi
 fi
 
-# Placeholder for image checks (since kernel isn't built yet)
+# Kernel console append args
+KERNEL_CMDLINE="console=$SYSTEM_CONSOLE earlycon panic=5"
+
+# 5. Scan for kernel & optional rootfs
 echo "🔍 [INFO] Scanning for kernel & rootfs binaries..."
 KERNEL_IMAGE="${WORKSPACE_DIR}/out/kernel/Image"
+ROOTFS_IMAGE="${WORKSPACE_DIR}/out/rootfs.ext4"
 
 if [ ! -f "$KERNEL_IMAGE" ]; then
-    echo "⚠️  [WARN] Kernel image not compiled yet at: $KERNEL_IMAGE"
-    echo "          Please build the OS modules and kernel before running."
+    echo "⚠️  [WARN] Kernel image not found at: $KERNEL_IMAGE"
+    echo "          Please run: ./scripts/download-kernel.sh"
     echo "          (Running in verification/dry-run configuration)"
     DRY_RUN=true
 fi
 
-# 4. Run or Dry-Run Execution
+# Attach rootfs only if it exists
+if [ -f "$ROOTFS_IMAGE" ]; then
+    echo "💾 [INFO] Rootfs found: $ROOTFS_IMAGE"
+    QEMU_ARGS+=(
+        "-drive" "file=${ROOTFS_IMAGE},format=raw,if=virtio"
+    )
+    KERNEL_CMDLINE+=" root=/dev/vda rw init=/system/bin/init"
+else
+    echo "⚠️  [INFO] No rootfs image found — booting kernel only (expect kernel panic, normal for first boot)"
+fi
+
+QEMU_ARGS+=("-append" "$KERNEL_CMDLINE")
+
+# 6. Run or Dry-Run Execution
 if [ "$DRY_RUN" = true ]; then
     echo "📝 [DRY RUN] Command draft:"
-    echo "    qemu-system-aarch64 ${QEMU_ARGS[*]}"
+    echo "    qemu-system-aarch64 ${QEMU_ARGS[*]} -kernel $KERNEL_IMAGE"
     echo "============================================="
     echo "✅ [SUCCESS] Dry-run validation complete."
     exit 0
 else
     echo "🚀 [BOOT] Booting target emulation..."
+    echo "   (Press Ctrl+A then X to exit QEMU)"
+    echo "============================================="
     exec qemu-system-aarch64 "${QEMU_ARGS[@]}" -kernel "$KERNEL_IMAGE"
 fi

@@ -9,6 +9,8 @@ Bu sürüm raporu, Mobil İşletim Sistemi projesinin ilk alfa sürümüne (`v1.
 * **Yayınlanma Tarihi:** 3 Haziran 2026
 * **Desteklenen Hedef Mimari:** `aarch64` (ARM64 QEMU)
 * **Desteklenen Simülasyon Mimarisi:** `x86_64` (Local Linux Host)
+* **Kernel:** Linux ARM64 — Debian netboot precompiled (`out/kernel/Image`, 36 MB)
+* **Emülatör:** QEMU `virt` makinesi, `cortex-a72` CPU, 4 çekirdek, 2 GB RAM
 
 ---
 
@@ -52,3 +54,38 @@ Sistem host mimarisinde (`x86_64`) tüm bileşenlerin iletişimini ve çalışma
 3. **`test_statusbar_host.sh`**: Statusbar daemon'ının bildirim soketine enjekte edilen mesajları anlık alıp ekranda render ettiğini test eder.
 4. **`test_native_apps_host.sh`**: Native Settings ve Dialer uygulamalarının bağımsız arayüz tamponları ürettiğini ve IPC üzerinden durum çubuğuna sinyal gönderdiğini doğrular.
 5. **`test_compositor_host.sh`**: `surfaceflinger` kompozitörünün istemci PPM tamponlarını doğru koordinat ve katman sırasında üst üste bindirerek nihai ekranı oluşturduğunu doğrular.
+
+---
+
+## 🖥️ QEMU Emülasyon ve Kernel
+
+### Kernel Edinimi
+* **Kaynak:** Debian netboot ARM64 precompiled kernel
+* **Script:** `scripts/download-kernel.sh`
+* **Hedef:** `out/kernel/Image` (36 MB)
+
+### İlk Boot (First Boot)
+* ARM64 Linux kernel QEMU `virt` makinesinde başarıyla boot edildi.
+* **Onaylanan Kernel Çıktıları:** PSCI v1.1, KPTI (Kernel Page Table Isolation), Spectre/Meltdown mitigations, NUMA faking, DMA zone allocation.
+* Rootfs henüz olmadığından kernel panic ile sonlanıyor — bu **beklenen davranış**.
+
+### Port Konfigürasyonu
+| Host Port | Misafir Port | Protokol | Açıklama |
+|-----------|-------------|----------|---------|
+| `9595` | `8080` | TCP/HTTP | Web sunucusu / Control Center |
+
+### Çalıştırma
+```bash
+# Kernel indir
+./scripts/download-kernel.sh
+
+# Headless modda boot et
+./scripts/qemu-run.sh --headless
+```
+
+---
+
+## 🔜 Sonraki Adımlar (Milestone 12)
+* [ ] Rootfs ext4 disk image'ı oluştur (`out/rootfs.ext4`)
+* [ ] `out/kernel/Image` + `out/rootfs.ext4` ile tam userspace boot
+* [ ] QEMU içinde `/system/bin/init` → `servicemanager` → `surfaceflinger` zincirini ayağa kaldır
