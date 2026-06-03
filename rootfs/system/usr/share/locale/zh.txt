@@ -1,0 +1,11 @@
+# Chinese Locale (zh.txt)
+launcher.title=应用启动器
+settings.title=设置
+dialer.title=电话
+messaging.title=短信
+browser.title=浏览器
+power.battery=电池
+power.mode=电源模式
+power.mode.performance=高性能
+power.mode.balanced=平衡
+power.mode.powersave=省电模式

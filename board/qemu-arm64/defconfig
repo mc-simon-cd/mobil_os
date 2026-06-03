@@ -1,0 +1,45 @@
+# Linux Kernel Config Fragment - Mobile OS QEMU ARM64
+
+# Target system architecture options
+CONFIG_ARM64=y
+CONFIG_SCHED_MC=y
+CONFIG_NR_CPUS=4
+CONFIG_HZ_250=y
+
+# Emulation Machine Profile
+CONFIG_ARCH_VIRT=y
+
+# Core init & boot features
+CONFIG_SYSFS=y
+CONFIG_PROC_FS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_TMPFS=y
+CONFIG_DEVPTS_MULTIPLE_INSTANCES=y
+
+# Serial & System Console
+CONFIG_SERIAL_AMBA_PL011=y
+CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
+
+# Virtual block storage drivers (for OS image)
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_PCI=y
+
+# Input Drivers (Mouse/Touchpad emulation)
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_INPUT_MOUSE=y
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_VIRTIO_INPUT=y
+
+# Graphics DRM Display Support (Required for surfaceflinger / compositor)
+CONFIG_DRM=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_FB=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+
+# IPC / Android compatible options (Optional placeholder for binder support)
+CONFIG_ANDROID=y
+CONFIG_ANDROID_BINDER_IPC=y
+CONFIG_ASHMEM=y

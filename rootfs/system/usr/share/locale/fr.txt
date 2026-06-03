@@ -1,0 +1,11 @@
+# French Locale (fr.txt)
+launcher.title=Lanceur d'applications
+settings.title=Paramètres
+dialer.title=Téléphone
+messaging.title=Messages
+browser.title=Navigateur
+power.battery=Batterie
+power.mode=Mode d'alimentation
+power.mode.performance=Haute performance
+power.mode.balanced=Équilibré
+power.mode.powersave=Économiseur d'énergie

@@ -1,0 +1,18 @@
+# System Boot Configuration Manifest (init.rc)
+
+on boot
+    mount
+    mkdir /data
+    mkdir /cache
+    mkdir /tmp
+    write /sys/power/state mem
+
+# Servicemanager - IPC Broker Service
+service servicemanager /system/bin/servicemanager
+    class main
+    respawn
+
+# Surfaceflinger - Wayland Window Manager Compositor
+service surfaceflinger /system/bin/surfaceflinger
+    class main
+    respawn

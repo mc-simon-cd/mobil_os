@@ -1,0 +1,11 @@
+# Japanese Locale (ja.txt)
+launcher.title=アプリランチャー
+settings.title=設定
+dialer.title=電話
+messaging.title=メッセージ
+browser.title=ブラウザ
+power.battery=バッテリー
+power.mode=電源モード
+power.mode.performance=高パフォーマンス
+power.mode.balanced=バランス
+power.mode.powersave=省電力

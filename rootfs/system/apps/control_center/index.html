@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile OS - Control Center</title>
+    <!-- Google Fonts Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Animated Blobs -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <div class="dashboard-wrapper">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-logo">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#logo-grad)" />
+                    <circle cx="16" cy="16" r="6" fill="#ffffff" fill-opacity="0.9" />
+                    <path d="M16 10V22M10 16H22" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
+                    <defs>
+                        <linearGradient id="logo-grad" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#8b5cf6"/>
+                            <stop offset="1" stop-color="#ec4899"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <h1 class="logo-title">Mobile OS</h1>
+            </div>
+            <div class="header-actions">
+                <!-- Language Selector -->
+                <div class="language-dropdown">
+                    <button class="lang-btn" id="lang-select-btn">
+                        <span id="current-lang-label">English</span>
+                        <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                    <div class="lang-options" id="lang-dropdown-options">
+                        <div class="lang-opt" data-lang="en">English</div>
+                        <div class="lang-opt" data-lang="tr">Türkçe</div>
+                        <div class="lang-opt" data-lang="es">Español</div>
+                        <div class="lang-opt" data-lang="fr">Français</div>
+                        <div class="lang-opt" data-lang="de">Deutsch</div>
+                        <div class="lang-opt" data-lang="pt">Português</div>
+                        <div class="lang-opt" data-lang="ru">Русский</div>
+                        <div class="lang-opt" data-lang="zh">中文</div>
+                        <div class="lang-opt" data-lang="ja">日本語</div>
+                        <div class="lang-opt" data-lang="ar">العربية</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Side: Power Controller -->
+            <section class="card glass-card" id="power-card">
+                <div class="card-header">
+                    <div class="card-icon power-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/></svg>
+                    </div>
+                    <h2 class="card-title" id="txt-power-mgmt">Power Management</h2>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Circular Battery Info -->
+                    <div class="battery-status-container">
+                        <div class="battery-ring">
+                            <svg class="progress-ring" width="160" height="160">
+                                <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="12" fill="transparent" r="70" cx="80" cy="80"/>
+                                <circle class="progress-ring-bar" id="battery-progress-bar" stroke="url(#battery-grad)" stroke-width="12" stroke-linecap="round" fill="transparent" r="70" cx="80" cy="80" stroke-dasharray="439.8" stroke-dashoffset="439.8"/>
+                                <defs>
+                                    <linearGradient id="battery-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#10b981"/>
+                                        <stop offset="100%" stop-color="#059669"/>
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <div class="battery-ring-inner">
+                                <span class="battery-pct" id="battery-level-val">--%</span>
+                                <span class="battery-label" id="txt-battery-label">Battery</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Power Mode Info -->
+                    <div class="power-mode-display">
+                        <span class="mode-label" id="txt-current-mode-label">Current Mode:</span>
+                        <span class="mode-value" id="current-power-mode-val">--</span>
+                    </div>
+
+                    <!-- Mode Control Buttons -->
+                    <div class="mode-buttons-container">
+                        <button class="btn mode-btn btn-powersave" id="btn-mode-powersave" data-mode="powersave">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            <span id="txt-mode-powersave">Power Saver</span>
+                        </button>
+                        <button class="btn mode-btn btn-balanced active" id="btn-mode-balanced" data-mode="balanced">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            <span id="txt-mode-balanced">Balanced</span>
+                        </button>
+                        <button class="btn mode-btn btn-performance" id="btn-mode-performance" data-mode="performance">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            <span id="txt-mode-performance">Performance</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Side: Input Injection & Device Simulator -->
+            <section class="card glass-card" id="input-card">
+                <div class="card-header">
+                    <div class="card-icon input-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                    </div>
+                    <h2 class="card-title" id="txt-input-sim">Input Injection Simulator</h2>
+                </div>
+
+                <div class="card-body">
+                    <div class="simulator-layout">
+                        <!-- Mock Smartphone Visual -->
+                        <div class="mock-device">
+                            <div class="screen-glow"></div>
+                            <div class="mock-device-inner">
+                                <div class="mock-screen">
+                                    <div class="mock-header">
+                                        <div class="mock-time">20:50</div>
+                                        <div class="mock-notch"></div>
+                                        <div class="mock-icons">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+                                            <span class="mock-battery" id="mock-battery-indicator">85%</span>
+                                        </div>
+                                    </div>
+                                    <div class="mock-content">
+                                        <div class="mock-app-icon">
+                                            <div class="animated-radar"></div>
+                                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                        </div>
+                                        <div class="mock-status-text" id="mock-screen-text">System Active</div>
+                                    </div>
+                                    <div class="mock-navbar">
+                                        <div class="nav-bar-btn" id="sim-back">◁</div>
+                                        <div class="nav-bar-btn" id="sim-home">◯</div>
+                                        <div class="nav-bar-btn" id="sim-recent">☐</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Hardware Side Buttons -->
+                            <button class="hw-btn hw-power" id="btn-hw-power" title="Power Button">POWER</button>
+                            <button class="hw-btn hw-vol-up" id="btn-hw-vol-up" title="Volume Up">+</button>
+                            <button class="hw-btn hw-vol-down" id="btn-hw-vol-down" title="Volume Down">-</button>
+                        </div>
+
+                        <!-- Info & Trigger Panel -->
+                        <div class="trigger-panel">
+                            <div class="events-status-log">
+                                <h3 class="panel-section-title" id="txt-last-event">Last Event Info</h3>
+                                <div class="event-data-box">
+                                    <div class="event-data-row">
+                                        <span class="evt-lbl" id="txt-evt-type">Type:</span>
+                                        <span class="evt-val" id="evt-type-val">--</span>
+                                    </div>
+                                    <div class="event-data-row">
+                                        <span class="evt-lbl" id="txt-evt-code">Code:</span>
+                                        <span class="evt-val" id="evt-code-val">--</span>
+                                    </div>
+                                    <div class="event-data-row">
+                                        <span class="evt-lbl" id="txt-evt-value">Value:</span>
+                                        <span class="evt-val" id="evt-value-val">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Quick Injector Buttons -->
+                            <div class="quick-injectors">
+                                <h3 class="panel-section-title" id="txt-quick-actions">Quick Controls</h3>
+                                <div class="grid-buttons">
+                                    <button class="btn btn-action" id="btn-action-power">Inject Power</button>
+                                    <button class="btn btn-action" id="btn-action-volup">Inject Vol +</button>
+                                    <button class="btn btn-action" id="btn-action-voldown">Inject Vol -</button>
+                                    <button class="btn btn-action" id="btn-action-home">Inject Home</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Console Log Section (Terminal overlay at the bottom) -->
+        <footer class="console-footer glass-card">
+            <div class="console-header">
+                <div class="console-title">
+                    <span class="terminal-dots">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </span>
+                    <span id="txt-terminal-log">System Log Console</span>
+                </div>
+                <button class="console-clear-btn" id="btn-clear-console">Clear</button>
+            </div>
+            <div class="console-body" id="console-log-content">
+                <div class="log-entry log-info">[INFO] Dashboard initialized. Connecting to API Gateway...</div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

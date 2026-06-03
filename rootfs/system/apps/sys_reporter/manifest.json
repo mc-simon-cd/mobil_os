@@ -1,0 +1,6 @@
+{
+  "name": "System Status Reporter",
+  "version": "1.0.0",
+  "type": "python",
+  "entry_point": "reporter.py"
+}

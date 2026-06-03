@@ -1,0 +1,28 @@
+# Mobile OS - AI Agent File Exclusion List (.clodeignore)
+
+# Ignore compiled objects, libraries, and binaries
+build/
+out/
+*.o
+*.a
+*.so
+*.elf
+*.img
+*.bin
+
+# Ignore heavy external packages and submodules
+external/
+
+# Ignore custom board firmware blobs (avoid feeding binaries to AI window)
+board/**/firmware/
+
+# OS-specific and editor configuration directories
+.git/
+.github/
+.vscode/
+.idea/
+.editorconfig
+
+# Local developer build cache
+.cache/
+tmp/

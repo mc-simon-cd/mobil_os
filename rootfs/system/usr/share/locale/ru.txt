@@ -1,0 +1,11 @@
+# Russian Locale (ru.txt)
+launcher.title=Запуск приложений
+settings.title=Настройки
+dialer.title=Телефон
+messaging.title=Сообщения
+browser.title=Браузер
+power.battery=Батарея
+power.mode=Режим питания
+power.mode.performance=Высокая производительность
+power.mode.balanced=Сбалансированный
+power.mode.powersave=Энергосбережение

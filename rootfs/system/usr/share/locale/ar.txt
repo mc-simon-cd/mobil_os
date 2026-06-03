@@ -1,0 +1,11 @@
+# Arabic Locale (ar.txt)
+launcher.title=مشغل التطبيقات
+settings.title=الإعدادات
+dialer.title=الهاتف
+messaging.title=الرسائل
+browser.title=المتصفح
+power.battery=البطارية
+power.mode=وضع الطاقة
+power.mode.performance=الأداء العالي
+power.mode.balanced=متوازن
+power.mode.powersave=موفير الطاقة

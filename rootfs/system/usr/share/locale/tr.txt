@@ -1,0 +1,11 @@
+# Turkish Locale (tr.txt)
+launcher.title=Uygulama Başlatıcı
+settings.title=Ayarlar
+dialer.title=Telefon
+messaging.title=Mesajlar
+browser.title=Tarayıcı
+power.battery=Pil
+power.mode=Güç Modu
+power.mode.performance=Yüksek Performans
+power.mode.balanced=Dengeli
+power.mode.powersave=Güç Tasarrufu

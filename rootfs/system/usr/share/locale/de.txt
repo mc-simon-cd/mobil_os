@@ -1,0 +1,11 @@
+# German Locale (de.txt)
+launcher.title=App-Launcher
+settings.title=Einstellungen
+dialer.title=Telefon
+messaging.title=Nachrichten
+browser.title=Browser
+power.battery=Akku
+power.mode=Energiemodus
+power.mode.performance=Hohe Leistung
+power.mode.balanced=Ausbalanciert
+power.mode.powersave=Energiesparmodus

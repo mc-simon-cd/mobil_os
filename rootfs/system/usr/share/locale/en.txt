@@ -1,0 +1,11 @@
+# English Locale (en.txt)
+launcher.title=App Launcher
+settings.title=Settings
+dialer.title=Phone
+messaging.title=Messages
+browser.title=Browser
+power.battery=Battery
+power.mode=Power Mode
+power.mode.performance=High Performance
+power.mode.balanced=Balanced
+power.mode.powersave=Power Saver

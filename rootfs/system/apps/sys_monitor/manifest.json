@@ -1,0 +1,6 @@
+{
+  "name": "System Load Monitor",
+  "version": "1.0.0",
+  "type": "javascript",
+  "entry_point": "monitor.js"
+}

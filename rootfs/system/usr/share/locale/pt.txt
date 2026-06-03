@@ -1,0 +1,11 @@
+# Portuguese Locale (pt.txt)
+launcher.title=Iniciador de Apps
+settings.title=Configurações
+dialer.title=Telefone
+messaging.title=Mensagens
+browser.title=Navegador
+power.battery=Bateria
+power.mode=Modo de Energia
+power.mode.performance=Alto Desempenho
+power.mode.balanced=Equilibrado
+power.mode.powersave=Economia de Energia

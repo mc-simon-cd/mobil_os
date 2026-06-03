@@ -1,0 +1,6 @@
+{
+  "name": "Control Center Dashboard",
+  "version": "1.0.0",
+  "type": "web",
+  "entry_point": "index.html"
+}

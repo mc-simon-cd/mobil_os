@@ -1,0 +1,7 @@
+root:x:0:
+system:x:1000:system
+ui:x:1001:ui
+input:x:1002:input
+audio:x:29:ui,system
+video:x:44:ui,system
+nobody:x:65534:

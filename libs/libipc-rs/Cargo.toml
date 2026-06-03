@@ -1,0 +1,10 @@
+[package]
+name = "libipc-rs"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+# Standard library features only (Zero-Dependency)
