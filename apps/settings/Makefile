@@ -15,7 +15,7 @@ all: $(TARGET)
 
 $(TARGET): $(SRCS) $(LIBIPC) $(LIBGRAPHICS) $(LIBI18N)
 	@mkdir -p $(OUT_DIR)/bin
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 	@echo "  ❇️ Compiled Settings App: $@"
 
 clean:

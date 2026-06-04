@@ -1,6 +1,12 @@
 # Mobile OS - Master Makefile
 
+export CC := aarch64-linux-gnu-gcc
+export CXX := aarch64-linux-gnu-g++
+export AR := aarch64-linux-gnu-ar
+export LDFLAGS := -static
+
 SUBDIRS := libs core services ui apps
+
 
 .PHONY: all clean $(SUBDIRS)
 

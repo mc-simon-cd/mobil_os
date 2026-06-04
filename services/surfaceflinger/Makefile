@@ -13,7 +13,7 @@ all: $(TARGET)
 
 $(TARGET): $(SRCS) $(LIBIPC)
 	@mkdir -p $(OUT_DIR)/bin
-	$(CXX) $(CXXFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o $@
 	@echo "  ❇️ Compiled Surfaceflinger process: $@"
 
 clean:

@@ -1,18 +1,30 @@
 # System Boot Configuration Manifest (init.rc)
+# Mobile OS v1.0.0-alpha — mcsimon
 
 on boot
     mount
-    mkdir /data
-    mkdir /cache
-    mkdir /tmp
-    write /sys/power/state mem
+    mkdir /data 0755 root root
+    mkdir /cache 0755 root root
+    mkdir /tmp 0777 root root
+    mkdir /run 0755 root root
+    mkdir /system 0755 root root
+    mkdir /system/bin 0755 root root
+    mkdir /system/lib 0755 root root
 
-# Servicemanager - IPC Broker Service
+# Servicemanager - IPC Broker Service (başlatılacak ilk servis)
 service servicemanager /system/bin/servicemanager
-    class main
+    class core
+    user root
     respawn
 
-# Surfaceflinger - Wayland Window Manager Compositor
-service surfaceflinger /system/bin/surfaceflinger
+# Power Manager - Battery & Power Profile Daemon
+service powermanager /system/bin/powermanager
     class main
+    user root
+    respawn
+
+# API Gateway - REST HTTP Server (host:9595 -> guest:8080)
+service apigateway /system/bin/apigateway
+    class main
+    user root
     respawn

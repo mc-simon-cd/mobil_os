@@ -13,29 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Mobile OS - Minimal ARM64 Rootfs Builder
-# Builds out/rootfs.ext4 from the project's own init binary + rootfs overlay.
+# Mobile OS - ARM64 Rootfs + Initramfs Builder
+# Produces out/initramfs.cpio.gz with init engine + all system services.
 
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${WORKSPACE}/out"
-ROOTFS_STAGE="${OUT_DIR}/rootfs_stage"   # staging directory
-ROOTFS_IMG="${OUT_DIR}/rootfs.ext4"
-ROOTFS_SIZE_MB=64                        # image size in MB
+ROOTFS_STAGE="${OUT_DIR}/rootfs_stage"
+INITRAMFS="${OUT_DIR}/initramfs.cpio.gz"
 CC="${CC:-aarch64-linux-gnu-gcc}"
 
 echo "============================================="
-echo "📦  Mobile OS — Rootfs Builder"
+echo "📦  Mobile OS — Rootfs + Initramfs Builder"
 echo "============================================="
 echo "   Workspace : $WORKSPACE"
 echo "   Staging   : $ROOTFS_STAGE"
-echo "   Output    : $ROOTFS_IMG (${ROOTFS_SIZE_MB} MB)"
+echo "   Output    : $INITRAMFS"
 echo "   Compiler  : $CC"
 echo "============================================="
 
 # ── 1. Clean & create staging tree ─────────────────────────────────────────
-echo "🗂️  [1/5] Creating directory tree..."
+echo "🗂️  [1/6] Creating directory tree..."
 rm -rf "$ROOTFS_STAGE"
 mkdir -p \
     "${ROOTFS_STAGE}/sbin" \
@@ -49,6 +48,8 @@ mkdir -p \
     "${ROOTFS_STAGE}/dev" \
     "${ROOTFS_STAGE}/tmp" \
     "${ROOTFS_STAGE}/run" \
+    "${ROOTFS_STAGE}/data" \
+    "${ROOTFS_STAGE}/cache" \
     "${ROOTFS_STAGE}/var/log" \
     "${ROOTFS_STAGE}/etc/init.d" \
     "${ROOTFS_STAGE}/system/bin" \
@@ -56,7 +57,7 @@ mkdir -p \
     "${ROOTFS_STAGE}/mnt"
 
 # ── 2. Compile project init (PID 1) ────────────────────────────────────────
-echo "🔨 [2/5] Compiling ARM64 init binary..."
+echo "🔨 [2/6] Compiling ARM64 init binary (static)..."
 INIT_SRC="${WORKSPACE}/core/init"
 INIT_BIN="${ROOTFS_STAGE}/sbin/init"
 
@@ -68,91 +69,85 @@ $CC \
     "${INIT_SRC}/src/properties.c" \
     "${INIT_SRC}/src/init.c" \
     -o "$INIT_BIN" \
-    -static   # statically linked — no dynamic linker needed
-echo "   ✅ init binary: $INIT_BIN ($(du -sh "$INIT_BIN" | cut -f1))"
+    -static
+echo "   ✅ /sbin/init: $(du -sh "$INIT_BIN" | cut -f1)"
 
-# ── 3. Populate etc/ ────────────────────────────────────────────────────────
-echo "📝 [3/5] Writing etc/ config files..."
+# /init — initramfs entry point (kernel looks for this first)
+cp "$INIT_BIN" "${ROOTFS_STAGE}/init"
+echo "   ✅ /init entry point set"
 
-# Copy project's init.rc
+# ── 3. Copy system service binaries ────────────────────────────────────────
+echo "📋 [3/6] Copying system service binaries..."
+SRC_BIN="${OUT_DIR}/rootfs/system/bin"
+
+SERVICES=(servicemanager powermanager apigateway inputflinger apprunner statusbar surfaceflinger)
+
+for svc in "${SERVICES[@]}"; do
+    if [ -f "${SRC_BIN}/${svc}" ]; then
+        cp "${SRC_BIN}/${svc}" "${ROOTFS_STAGE}/system/bin/${svc}"
+        echo "   ✅ ${svc} ($(du -sh "${ROOTFS_STAGE}/system/bin/${svc}" | cut -f1))"
+    else
+        echo "   ⚠️  ${svc} not found in ${SRC_BIN} — skipping"
+    fi
+done
+
+# ── 3.5 Copy kernel modules ────────────────────────────────────────────────
+echo "📦 [3.5/6] Copying kernel modules..."
+mkdir -p "${ROOTFS_STAGE}/lib/modules"
+if [ -f "${OUT_DIR}/e1000.ko" ]; then
+    cp "${OUT_DIR}/e1000.ko" "${ROOTFS_STAGE}/lib/modules/e1000.ko"
+    echo "   ✅ e1000.ko copied ($(du -sh "${ROOTFS_STAGE}/lib/modules/e1000.ko" | cut -f1))"
+else
+    echo "   ⚠️  out/e1000.ko not found!"
+fi
+
+
+# ── 4. Populate etc/ ────────────────────────────────────────────────────────
+echo "📝 [4/6] Writing etc/ config files..."
+
 cp "${INIT_SRC}/init.rc" "${ROOTFS_STAGE}/etc/init.rc"
+echo "   ✅ init.rc copied ($(wc -l < "${ROOTFS_STAGE}/etc/init.rc") lines)"
 
-# /etc/passwd — minimal users
-cat > "${ROOTFS_STAGE}/etc/passwd" <<'EOF'
+cat > "${ROOTFS_STAGE}/etc/passwd" <<'PASSWDEOF'
 root:x:0:0:root:/root:/bin/sh
 system:x:1000:1000:system:/:/bin/false
-EOF
+PASSWDEOF
 
-# /etc/group
-cat > "${ROOTFS_STAGE}/etc/group" <<'EOF'
+cat > "${ROOTFS_STAGE}/etc/group" <<'GROUPEOF'
 root:x:0:
 system:x:1000:
-EOF
+GROUPEOF
 
-# /etc/fstab
-cat > "${ROOTFS_STAGE}/etc/fstab" <<'EOF'
-proc      /proc     proc    defaults  0 0
-sysfs     /sys      sysfs   defaults  0 0
-devtmpfs  /dev      devtmpfs defaults 0 0
-tmpfs     /tmp      tmpfs   defaults  0 0
-tmpfs     /run      tmpfs   defaults  0 0
-EOF
+cat > "${ROOTFS_STAGE}/etc/fstab" <<'FSTABEOF'
+proc      /proc     proc      defaults  0 0
+sysfs     /sys      sysfs     defaults  0 0
+devtmpfs  /dev      devtmpfs  defaults  0 0
+tmpfs     /tmp      tmpfs     defaults  0 0
+tmpfs     /run      tmpfs     defaults  0 0
+FSTABEOF
 
-# /etc/init.d/rcS — early userspace setup
-cat > "${ROOTFS_STAGE}/etc/init.d/rcS" <<'EOF'
-#!/bin/sh
-mount -a 2>/dev/null || true
-mount -t devtmpfs none /dev 2>/dev/null || true
-mkdir -p /dev/pts
-mount -t devpts devpts /dev/pts 2>/dev/null || true
-echo "Mobile OS v1.0.0-alpha booting..."
-echo "  Architecture : $(uname -m)"
-echo "  Kernel       : $(uname -r)"
-EOF
-chmod +x "${ROOTFS_STAGE}/etc/init.d/rcS"
+cat > "${ROOTFS_STAGE}/etc/os-release" <<'OSEOF'
+NAME="Mobile OS"
+VERSION="1.0.0-alpha"
+ID=mobileos
+PRETTY_NAME="Mobile OS v1.0.0-alpha"
+HOME_URL="https://github.com/mc-simon-cd/mobil_os"
+OSEOF
 
-# ── 4. Basic /dev nodes ─────────────────────────────────────────────────────
-echo "🔌 [4/5] Creating device nodes (may need sudo)..."
-# Use mknod if root, otherwise skip (kernel devtmpfs will populate /dev)
-if [ "$(id -u)" -eq 0 ]; then
-    mknod -m 666 "${ROOTFS_STAGE}/dev/null"    c 1 3
-    mknod -m 666 "${ROOTFS_STAGE}/dev/zero"    c 1 5
-    mknod -m 600 "${ROOTFS_STAGE}/dev/console" c 5 1
-    mknod -m 666 "${ROOTFS_STAGE}/dev/tty"     c 5 0
-    mknod -m 666 "${ROOTFS_STAGE}/dev/ttyAMA0" c 204 64
-    echo "   ✅ Device nodes created."
-else
-    echo "   ⚠️  Not root — skipping static device nodes (kernel devtmpfs will handle /dev at boot)."
-fi
+# ── 5. Summary ──────────────────────────────────────────────────────────────
+echo "📊 [5/6] Staging summary:"
+echo "   /init           : $(du -sh "${ROOTFS_STAGE}/init" | cut -f1)"
+echo "   /sbin/init      : $(du -sh "${ROOTFS_STAGE}/sbin/init" | cut -f1)"
+echo "   /system/bin/*   : $(ls "${ROOTFS_STAGE}/system/bin/" | wc -l) binaries ($(ls "${ROOTFS_STAGE}/system/bin/"))"
+echo "   /etc/init.rc    : $(wc -l < "${ROOTFS_STAGE}/etc/init.rc") lines"
 
-# ── 5. Pack into ext4 image ─────────────────────────────────────────────────
-echo "💾 [5/5] Creating ext4 image (${ROOTFS_SIZE_MB} MB)..."
-dd if=/dev/zero of="$ROOTFS_IMG" bs=1M count="$ROOTFS_SIZE_MB" status=none
-mkfs.ext4 -q -L "mobileos_root" "$ROOTFS_IMG"
-
-# Mount, copy, unmount
-MOUNT_TMP=$(mktemp -d)
-if [ "$(id -u)" -eq 0 ]; then
-    mount -o loop "$ROOTFS_IMG" "$MOUNT_TMP"
-    cp -a "${ROOTFS_STAGE}/." "$MOUNT_TMP/"
-    umount "$MOUNT_TMP"
-    echo "   ✅ Rootfs packed with loop mount."
-else
-    # Fallback: use debugfs (no root needed)
-    echo "   ℹ️  Using debugfs (no root) to populate image..."
-    find "$ROOTFS_STAGE" -type f | while read -r f; do
-        rel="${f#${ROOTFS_STAGE}/}"
-        dir=$(dirname "$rel")
-        debugfs -w "$ROOTFS_IMG" -R "mkdir $dir" 2>/dev/null || true
-        debugfs -w "$ROOTFS_IMG" -R "write $f $rel" 2>/dev/null || true
-    done
-    echo "   ✅ Rootfs packed via debugfs."
-fi
-rmdir "$MOUNT_TMP" 2>/dev/null || true
+# ── 6. Pack into cpio initramfs ─────────────────────────────────────────────
+echo "📦 [6/6] Packing initramfs (cpio.gz)..."
+( cd "$ROOTFS_STAGE" && find . | cpio -H newc -o 2>/dev/null | gzip > "$INITRAMFS" )
 
 echo "============================================="
-echo "✅ Rootfs image ready: $ROOTFS_IMG"
-echo "   Size: $(du -sh "$ROOTFS_IMG" | cut -f1)"
+echo "✅ Initramfs ready: $INITRAMFS"
+echo "   Size: $(du -sh "$INITRAMFS" | cut -f1)"
 echo "============================================="
 echo "🚀 Now run:  ./scripts/qemu-run.sh --headless"
 echo "============================================="

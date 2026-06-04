@@ -13,7 +13,7 @@ all: $(TARGET) $(CONFIG_TARGET)
 
 $(TARGET): $(SRCS)
 	@mkdir -p $(OUT_DIR)/sbin
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 	@echo "  ❇️ Compiled Init process: $@"
 
 $(CONFIG_TARGET): init.rc

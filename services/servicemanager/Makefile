@@ -13,7 +13,7 @@ all: $(TARGET)
 
 $(TARGET): $(SRCS) $(LIBIPC)
 	@mkdir -p $(OUT_DIR)/bin
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 	@echo "  ❇️ Compiled Servicemanager process: $@"
 
 clean:

@@ -77,7 +77,7 @@ QEMU_ARGS=(
     "-smp" "$QEMU_CORES"
     "-m" "$QEMU_RAM"
     "-netdev" "user,id=net0,hostfwd=tcp::${HOST_HTTP_PORT}-:8080"
-    "-device" "virtio-net-device,netdev=net0"
+    "-device" "e1000,netdev=net0"
 )
 
 if [ "$HEADLESS" = true ]; then

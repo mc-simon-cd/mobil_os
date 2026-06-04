@@ -21,6 +21,133 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+static void setup_network_interface(const char *name, const char *ip_addr) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        LOG_ERROR("Failed to create socket for net config on %s: %s", name, strerror(errno));
+        return;
+    }
+
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+
+    // Get current flags
+    if (ioctl(sock, SIOCGIFFLAGS, &ifr) < 0) {
+        LOG_ERROR("Failed to get flags for %s: %s", name, strerror(errno));
+        close(sock);
+        return;
+    }
+
+    // Set Up and Running flags
+    ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+    if (ioctl(sock, SIOCSIFFLAGS, &ifr) < 0) {
+        LOG_ERROR("Failed to set flags (UP) for %s: %s", name, strerror(errno));
+        close(sock);
+        return;
+    }
+    LOG_INFO("Interface %s brought UP", name);
+
+    // Set IP Address
+    if (ip_addr) {
+        struct sockaddr_in sin;
+        memset(&sin, 0, sizeof(sin));
+        sin.sin_family = AF_INET;
+        sin.sin_addr.s_addr = inet_addr(ip_addr);
+        memcpy(&ifr.ifr_addr, &sin, sizeof(struct sockaddr));
+
+        if (ioctl(sock, SIOCSIFADDR, &ifr) < 0) {
+            LOG_ERROR("Failed to set IP address %s for %s: %s", ip_addr, name, strerror(errno));
+        } else {
+            LOG_INFO("Interface %s IP address set to %s", name, ip_addr);
+        }
+    }
+
+    close(sock);
+}
+
+static int load_kernel_module(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        LOG_WARN("Could not open kernel module %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        LOG_ERROR("Failed to stat module %s: %s", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    size_t image_size = st.st_size;
+    void *image = malloc(image_size);
+    if (!image) {
+        LOG_ERROR("Out of memory allocating %zu bytes for module %s", image_size, path);
+        close(fd);
+        return -1;
+    }
+
+    if (read(fd, image, image_size) != (ssize_t)image_size) {
+        LOG_ERROR("Failed to read module %s: %s", path, strerror(errno));
+        free(image);
+        close(fd);
+        return -1;
+    }
+    close(fd);
+
+    // Call init_module syscall
+    long ret = syscall(SYS_init_module, image, image_size, "");
+    free(image);
+
+    if (ret != 0) {
+        LOG_ERROR("init_module failed for %s (ret=%ld): %s", path, ret, strerror(errno));
+        return -1;
+    }
+
+    LOG_INFO("Kernel module %s loaded successfully!", path);
+    return 0;
+}
+
+static void configure_network(void) {
+    // First, configure loopback
+    setup_network_interface("lo", "127.0.0.1");
+
+    // Load ethernet driver module (e1000)
+    load_kernel_module("/lib/modules/e1000.ko");
+
+    // Wait a brief moment for the device probe to register the interface
+    usleep(500000);
+
+    // Scan /sys/class/net for other interfaces
+    DIR *d = opendir("/sys/class/net");
+    if (d) {
+        struct dirent *dir;
+        while ((dir = readdir(d)) != NULL) {
+            if (strcmp(dir->d_name, ".") != 0 && strcmp(dir->d_name, "..") != 0 && strcmp(dir->d_name, "lo") != 0) {
+                LOG_INFO("Configuring detected ethernet interface: %s", dir->d_name);
+                // Assign QEMU guest IP
+                setup_network_interface(dir->d_name, "10.0.2.15");
+            }
+        }
+        closedir(d);
+    } else {
+        LOG_WARN("Could not open /sys/class/net to scan interfaces");
+    }
+}
+
 
 void handle_sigchld(int sig) {
     (void)sig; // Suppress unused parameter warning
@@ -63,6 +190,9 @@ int main(int argc, char *argv[]) {
     if (mount_essential_filesystems() != 0) {
         LOG_ERROR("Fatal error during system filesystem mount phases!");
     }
+
+    // Configure loopback and ethernet interfaces
+    configure_network();
 
     // Initialize state database
     property_init();
