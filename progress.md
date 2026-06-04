@@ -104,5 +104,9 @@ gantt
   * Initramfs (cpio.gz) yaklaşımıyla disk driver sorunu aşıldı.
   * `/proc`, `/sys`, `/dev`, `/tmp` başarıyla mount edildi.
   * `init.rc` parse edildi, `on boot` event bloğu işlendi.
-* [ ] **Milestone 12:** `servicemanager` ve `powermanager` daemon'larını QEMU içinde ayağa kaldır.
-* [ ] **Milestone 12:** `apigateway`'i QEMU içinde başlat, host:9595 → guest:8080 tüneli test et.
+* [x] **Milestone 12:** `servicemanager` ve `powermanager` daemon'larını QEMU içinde ayağa kaldır. 🎉
+* [x] **Milestone 12:** `apigateway`'i QEMU içinde başlat, host:9595 → guest:8080 tüneli test et. ✅
+  - Derlenen tüm servisler ARM64 mimarisine statik olarak çapraz derlendi.
+  - C `init` içerisine `init_module` sistem çağrısı eklenerek `e1000.ko` sürücüsü yüklendi.
+  - Sürücüyle gelen `eth0` ve local `lo` arayüzleri `ioctl` ile ayağa kaldırılıp IP atandı (`10.0.2.15` / `127.0.0.1`).
+  - Host üzerinden `curl` istekleriyle API Gateway ve Power Manager entegrasyonu doğrulandı.
