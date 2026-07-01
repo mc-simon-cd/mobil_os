@@ -1,12 +1,12 @@
-# Mobil İşletim Sistemi (Mobile OS) - Sürüm Raporu
+# Orion İşletim Sistemi (Orion OS) - Sürüm Raporu
 
-Bu sürüm raporu, Mobil İşletim Sistemi projesinin ilk alfa sürümüne (`v1.0.0-alpha`) ait detayları, geliştirilen modülleri, mimari bileşenleri ve doğrulama süreçlerini içermektedir.
+Bu sürüm raporu, Orion İşletim Sistemi projesinin ilk alfa sürümüne (`v1.0.0-alpha`) ait detayları, geliştirilen modülleri, mimari bileşenleri ve doğrulama süreçlerini içermektedir.
 
 ---
 
 ## 🏷️ Sürüm Bilgileri
 * **Sürüm Numarası:** `v1.0.0-alpha`
-* **Yayınlanma Tarihi:** 3 Haziran 2026
+* **Yayınlanma Tarihi:** 6 Haziran 2026
 * **Desteklenen Hedef Mimari:** `aarch64` (ARM64 QEMU)
 * **Desteklenen Simülasyon Mimarisi:** `x86_64` (Local Linux Host)
 * **Kernel:** Linux ARM64 — Debian netboot precompiled (`out/kernel/Image`, 36 MB)
@@ -17,15 +17,17 @@ Bu sürüm raporu, Mobil İşletim Sistemi projesinin ilk alfa sürümüne (`v1.
 ## 🏗️ Mimari Katmanlar ve Bileşenler
 
 ### 1. Önyükleme ve Temel Sistem (Boot & Base)
-* **Init Modülü (`core/init`)**: C diliyle sıfırdan geliştirilen PID 1 `init` süreci, `/proc`, `/sys`, `/dev` ve `/tmp` dosya sistemlerini otomatik olarak bağlar ve `etc/inittab` dosyasını okuyarak sistem daemon'larını başlatır.
-* **Kök Dosya Sistemi (Rootfs Overlay)**: Güvenli kullanıcı yapılandırmaları (`etc/passwd`, `etc/group`), `etc/fstab`, önyükleme betikleri (`etc/init.d/rcS`) ve yerel dil yapılandırmalarını içerir.
+* **Init Modülü (`core/init`)**: C diliyle geliştirilen PID 1 süreci; `/proc`, `/sys`, `/dev`, `/tmp` mount, `e1000.ko` modül yükleme, ağ yapılandırması (`ioctl`), `init.rc` ayrıştırma (`class core/main`, `args`, `respawn`) ve servis süpervizyonu.
+* **Boot Manifest (`init.rc`)**: `servicemanager` → `inputflinger` (core), ardından `powermanager`, `apigateway`, `surfaceflinger`, `statusbar`, `apprunner`, `launcher` (main) sırasıyla başlatılır.
+* **Initramfs Boot**: `scripts/make-rootfs.sh` ile `out/initramfs.cpio.gz` oluşturulur; disk sürücüsü gerektirmez.
+* **Bağımlılık Otomasyonu (`deps/deps.yml`)**: apt/pacman paketleri, Rust workspace güncellemeleri, kernel/modül indirme ve derleme pipeline'ı `scripts/update-deps.sh` ile otomatikleştirildi.
 
 ### 2. IPC ve Sistem Servisleri (The Nervous System)
 * **İletişim Altyapısı (`libipc` / `libipc-rs`)**: C ve Rust dillerinde veri serileştirme/paketleme (`Parcel` ve `Binder` modelleri) ile Unix domain socketleri üzerinden çalışan yüksek performanslı ve güvenli IPC mekanizması.
 * **Hizmet Yöneticisi (`servicemanager`)**: Servislerin sistem genelinde kayıt altına alınmasını, sorgulanmasını ve ad çözümlemesini (ad çözümleme Unix soketi üzerinden) yöneten ana kayıt defteri.
 * **Güç Yöneticisi (`powermanager`)**: Rust ile geliştirilen, pil seviyesini izleyen, güç profillerini (balanced/performance/powersave) yöneten ve durum değişikliklerini statusbar'a bildiren sistem daemon'ı.
 * **Giriş Hizmeti (`inputflinger`)**: Rust tabanlı girdi olayları dinleme ve API Gateway üzerinden gelen Key/Touch girdilerini sisteme enjekte etme servisi.
-* **Uygulama Çalıştırıcı (`apprunner`)**: JSON manifest dosyaları üzerinden farklı dillerle (Native C, Python, JavaScript, Web) yazılmış uygulamaları izole ve dinamik bir biçimde çalıştıran birleşik Rust uygulaması.
+* **Uygulama Çalıştırıcı (`apprunner`)**: JSON manifest tabanlı birleşik Rust uygulaması. Tek başına daemon değildir; `apprunner <app_dir>` şeklinde çağrılır. QEMU boot'ta `init.rc` üzerinden Control Center web sunucusu otomatik başlatılır.
 * **API Gateway (`apigateway`)**: Android/iOS cihazlarla entegrasyon sağlayan, giriş olayları enjeksiyonu ve güç profili kontrolü sunan Rust HTTP REST sunucusu.
 
 ### 3. Grafik ve Arayüz Shell (Graphics & Compositing)
@@ -62,30 +64,33 @@ Sistem host mimarisinde (`x86_64`) tüm bileşenlerin iletişimini ve çalışma
 ### Kernel Edinimi
 * **Kaynak:** Debian netboot ARM64 precompiled kernel
 * **Script:** `scripts/download-kernel.sh`
-* **Hedef:** `out/kernel/Image` (36 MB)
+* **Çıktılar:** `out/kernel/Image` (~37 MB) + `out/e1000.ko` (Debian nic-modules paketinden otomatik çıkarılır)
 
-### İlk Boot (First Boot)
-* ARM64 Linux kernel QEMU `virt` makinesinde başarıyla boot edildi.
-* **Onaylanan Kernel Çıktıları:** PSCI v1.1, KPTI (Kernel Page Table Isolation), Spectre/Meltdown mitigations, NUMA faking, DMA zone allocation.
-* Rootfs henüz olmadığından kernel panic ile sonlanıyor — bu **beklenen davranış**.
+### QEMU Boot (Initramfs)
+* ARM64 Linux kernel, initramfs ile QEMU `virt` makinesinde başarıyla boot edildi.
+* PID 1 init tüm core/main servislerini ayağa kaldırır; ağ `10.0.2.15` olarak yapılandırılır.
+* Host'tan `curl http://localhost:9595/api/status` ile API Gateway doğrulanabilir.
 
 ### Port Konfigürasyonu
 | Host Port | Misafir Port | Protokol | Açıklama |
 |-----------|-------------|----------|---------|
-| `9595` | `8080` | TCP/HTTP | Web sunucusu / Control Center |
+| `9595` | `8080` | TCP/HTTP | API Gateway REST |
+| — | `8000` | TCP/HTTP | Control Center (apprunner, guest içi) |
 
 ### Çalıştırma
 ```bash
-# Kernel indir
-./scripts/download-kernel.sh
+# Bağımlılıkları kur ve doğrula
+./scripts/update-deps.sh --all
 
-# Headless modda boot et
+# veya adım adım:
+./scripts/download-kernel.sh
+./scripts/make-rootfs.sh
 ./scripts/qemu-run.sh --headless
 ```
 
 ---
 
-## 🔜 Sonraki Adımlar (Milestone 12)
-* [ ] Rootfs ext4 disk image'ı oluştur (`out/rootfs.ext4`)
-* [ ] `out/kernel/Image` + `out/rootfs.ext4` ile tam userspace boot
-* [ ] QEMU içinde `/system/bin/init` → `servicemanager` → `surfaceflinger` zincirini ayağa kaldır
+## 🔜 Sonraki Adımlar
+* [ ] Launcher'ın `out/surface_<id>.ppm` dosyası üretmesi (compositor uyarılarının giderilmesi)
+* [x] Rootfs ext4 disk image'ı oluştur (`out/rootfs.ext4`)
+* [x] ext4 tabanlı tam disk boot (`./scripts/qemu-run.sh --disk`)

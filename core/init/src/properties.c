@@ -24,7 +24,7 @@ int property_init(void) {
     property_count = 0;
     
     // Write standard default system attributes
-    property_set("ro.product.name", "Mobile OS");
+    property_set("ro.product.name", "Orion OS");
     property_set("ro.product.device", "qemu-arm64");
     property_set("ro.build.version", "1.0-alpha");
     property_set("sys.boot_completed", "0");

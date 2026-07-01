@@ -1,4 +1,4 @@
-# Mobile OS - AI Agent File Exclusion List (.clodeignore)
+# Orion OS - AI Agent File Exclusion List (.clodeignore)
 
 # Ignore compiled objects, libraries, and binaries
 build/

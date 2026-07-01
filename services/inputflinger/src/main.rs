@@ -21,11 +21,14 @@ use std::sync::{Arc, Mutex};
 use libipc_rs::{ipc_connect, ipc_send_transaction, Parcel};
 
 const SOCKET_PATH: &str = "/tmp/inputflinger.sock";
+const SURFACEFLINGER_SOCKET: &str = "/tmp/surfaceflinger.sock";
 
 // Inputflinger Commands
 const CMD_REGISTER_LISTENER: i32 = 1;
-const CMD_SEND_INPUT_EVENT: i32 = 2;
-const CMD_GET_LAST_EVENT: i32 = 3;
+const CMD_SEND_INPUT_EVENT: i32  = 2;
+const CMD_GET_LAST_EVENT: i32   = 3;
+// Surfaceflinger touch injection command (Wayland mode)
+const SF_CMD_INJECT_TOUCH: i32  = 4;
 
 #[derive(Debug, Clone, Copy)]
 struct InputEvent {
@@ -74,6 +77,12 @@ fn register_with_servicemanager() {
 fn main() {
     println!("[INFO] [INPUTFLINGER] Starting Input Flinger Daemon...");
 
+    // Detect Wayland mode via environment variable set by init
+    let wayland_enabled = std::env::var("WAYLAND_ENABLED").unwrap_or_default() == "1";
+    if wayland_enabled {
+        println!("[INFO] [INPUTFLINGER] Wayland mode active — touch events will be forwarded to surfaceflinger seat.");
+    }
+
     // Register with servicemanager
     register_with_servicemanager();
 
@@ -112,7 +121,7 @@ fn main() {
         match stream {
             Ok(stream) => {
                 let state_clone = Arc::clone(&state);
-                if let Err(e) = handle_client(stream, state_clone) {
+                if let Err(e) = handle_client(stream, state_clone, wayland_enabled) {
                     eprintln!("[WARN] [INPUTFLINGER] Error handling client: {}", e);
                 }
             }
@@ -123,7 +132,7 @@ fn main() {
     }
 }
 
-fn handle_client(mut stream: UnixStream, state: Arc<Mutex<InputState>>) -> std::io::Result<()> {
+fn handle_client(mut stream: UnixStream, state: Arc<Mutex<InputState>>, wayland_enabled: bool) -> std::io::Result<()> {
     // 1. Read transaction header
     let mut header_bytes = [0u8; 8];
     stream.read_exact(&mut header_bytes)?;
@@ -179,7 +188,26 @@ fn handle_client(mut stream: UnixStream, state: Arc<Mutex<InputState>>) -> std::
                     let mut s = state.lock().unwrap();
                     s.last_event = Some(event);
 
-                    // Dispatch to all listeners, removing dead ones
+                    // --- Wayland mode: forward to surfaceflinger compositor seat ---
+                    if wayland_enabled {
+                        match ipc_connect(SURFACEFLINGER_SOCKET) {
+                            Ok(mut sf_stream) => {
+                                let mut sf_parcel = Parcel::new();
+                                sf_parcel.write_i32(t);
+                                sf_parcel.write_i32(c);
+                                sf_parcel.write_i32(v);
+                                match ipc_send_transaction(&mut sf_stream, SF_CMD_INJECT_TOUCH, &sf_parcel) {
+                                    Ok(_) => println!("[INFO] [INPUTFLINGER] Touch forwarded to Wayland compositor seat."),
+                                    Err(e) => eprintln!("[WARN] [INPUTFLINGER] Failed to forward touch to surfaceflinger: {}", e),
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[WARN] [INPUTFLINGER] Cannot connect to surfaceflinger for touch injection: {}", e);
+                            }
+                        }
+                    }
+
+                    // --- Legacy mode: dispatch to registered listeners ---
                     let mut dead_listeners = Vec::new();
                     for (i, listener_path) in s.listeners.iter().enumerate() {
                         match ipc_connect(listener_path) {

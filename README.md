@@ -1,6 +1,6 @@
-# Mobile OS 📱
+# Orion OS 📱
 
-Welcome to **Mobile OS**, a lightweight, modular, and completely independent open-source mobile operating system. Engineered from scratch, it layers custom user-space utilities, a fast Wayland compositor, and custom system applications over a minimal, performance-tuned Linux kernel.
+Welcome to **Orion OS**, a lightweight, modular, and completely independent open-source mobile operating system. Engineered from scratch, it layers custom user-space utilities, a fast Wayland compositor, and custom system applications over a minimal, performance-tuned Linux kernel.
 
 Our mission is to create a fully controllable mobile experience built around modularity, memory efficiency, and modern Unix design principles.
 
@@ -8,7 +8,7 @@ Our mission is to create a fully controllable mobile experience built around mod
 
 ## 🏛️ System Architecture
 
-Mobile OS separates system layers clean and strictly:
+Orion OS separates system layers clean and strictly:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -43,9 +43,9 @@ Mobile OS separates system layers clean and strictly:
 └────────────────────────────────────────────────────────┘
 ```
 
-- **Boot / core/init (PID 1)**: A zero-dependency boot daemon written in C. It initializes the virtual filesystems (`/proc`, `/sys`, `/dev`), parses the `init.rc` layout, and starts core system services.
+- **Boot / core/init (PID 1)**: A zero-dependency boot daemon written in C. It mounts virtual filesystems, loads the `e1000` network module, parses `init.rc` (with `class core/main` service ordering and `args` support), and supervises system daemons with automatic respawn.
 - **servicemanager**: The centralized registry for Inter-Process Communication (IPC). Every service connects here to register or resolve message endpoints.
-- **surfaceflinger**: A highly optimized display compositor utilizing the Wayland protocol and custom wlroots integration, optimized specifically for mobile orientation and screen layouts.
+- **surfaceflinger**: Software display compositor (PPM layer stack). Client apps write `out/surface_<id>.ppm`; the daemon composites them into `out/display_composited.ppm`. Wayland/wlroots is a planned future migration, not used in the current tree.
 - **libipc**: Our clean message serialization and socket-based transport framework, facilitating secure, real-time message passing between apps and services.
 
 ---
@@ -61,10 +61,12 @@ The project code is organized logically:
 * **`services/`**: Standard background system daemons (input dispatch, power profiles, IPC registration).
 * **`ui/`**: Core window management compositor protocols and the visual system shell (statusbar, notifications, dock).
 * **`apps/`**: System applications that come pre-bundled with the OS (Dialer, Messaging, File Manager).
+* **`deps/`**: Central dependency manifest (`deps.yml`) consumed by automated update scripts.
+* **`paket_yönetimi/`**: `opk` — Ed25519-signed application package manager (install, verify, sandbox launch).
 * **`libs/`**: Internal libraries providing UI components (`libui`), serialization (`libipc`), and drawing tools (`libgraphics`).
 * **`tools/`**: Host developer scripts, log listeners (`logcat`), packaging mechanisms, and emulator launcher.
 * **`tests/`**: Unit test suits and boot integration checklists.
-* **`scripts/`**: Automation tools for compilation, clean up, and installation.
+* **`scripts/`**: Automation tools for compilation, dependency updates, kernel download, and QEMU launch.
 
 ---
 
@@ -72,9 +74,20 @@ The project code is organized logically:
 
 You can easily build and test the operating system inside our virtual ARM64 sandbox. For a comprehensive, step-by-step setup guide with verification testing instructions, please refer to the detailed [install.md](install.md) installation guide.
 
-### Prerequisites (Debian/Ubuntu)
+### Prerequisites (Automated)
+
+Install and verify all host dependencies from the central manifest:
+
 ```bash
-sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-system-arm libwayland-dev libwlroots-dev make
+./scripts/update-deps.sh --check    # verify only
+./scripts/update-deps.sh --install  # install missing apt/pacman packages
+./scripts/update-deps.sh --all      # install + cargo update + kernel + build
+```
+
+Package lists live in [`deps/deps.yml`](deps/deps.yml). Manual install (Debian/Ubuntu):
+
+```bash
+sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-system-arm make curl xz-utils
 ```
 
 ### 1. Compile Everything
@@ -83,10 +96,16 @@ Compiles the core libs, services, shell, apps, and generates the bootable rootfs
 ./scripts/build.sh
 ```
 
-### 2. Run the Emulator
+### 2. Prepare Initramfs & Kernel
+```bash
+./scripts/download-kernel.sh   # ARM64 kernel + e1000.ko module
+./scripts/make-rootfs.sh       # cpio.gz initramfs
+```
+
+### 3. Run the Emulator
 Launches QEMU running our custom kernel and user-space environment:
 ```bash
-./scripts/qemu-run.sh
+./scripts/qemu-run.sh --headless
 ```
 
 ---
@@ -131,10 +150,11 @@ gcc -Wall -Wextra -std=c99 -O2 test_launcher.c -o test_launcher
 
 ## 🗺️ Roadmap & Contributing
 
-If you wish to contribute to Mobile OS:
+If you wish to contribute to Orion OS:
 1. Refer to [cloude.md](cloude.md) for strict memory layout and coding guidelines.
 2. Check [progress.md](progress.md) to inspect active sprint goals and unimplemented modules.
-3. Open a Pull Request conforming to standards defined in `CONTRIBUTING.md`.
+3. For the Wayland compositor roadmap, see [docs/wayland-migration.md](docs/wayland-migration.md).
+4. Open a Pull Request conforming to standards defined in `CONTRIBUTING.md`.
 ## 📄 License & Copyright
 
 Copyright © 2026 mcsimon. All rights reserved.

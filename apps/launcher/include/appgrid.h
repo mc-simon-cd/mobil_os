@@ -17,14 +17,20 @@
 #ifndef APPGRID_H
 #define APPGRID_H
 
+#include "graphics.h"
+#include "icons.h"
+#include <stdint.h>
+
 typedef struct {
     char name[32];
     char package[64];
-    int icon_id;
+    icon_id_t icon_id;
+    uint32_t icon_color;
 } app_icon_t;
 
-// Desktop App Grid methods
 void appgrid_init(void);
-void appgrid_render(void);
+void appgrid_render(canvas_t *canvas);
+int appgrid_hit_test(int32_t x, int32_t y);
+const char *appgrid_package_at(int index);
 
-#endif // APPGRID_H
+#endif /* APPGRID_H */

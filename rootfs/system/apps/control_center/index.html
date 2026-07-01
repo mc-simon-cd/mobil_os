@@ -19,7 +19,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile OS - Control Center</title>
+    <title>Orion OS - Control Center</title>
     <!-- Google Fonts Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,7 +47,7 @@
                         </linearGradient>
                     </defs>
                 </svg>
-                <h1 class="logo-title">Mobile OS</h1>
+                <h1 class="logo-title">Orion OS</h1>
             </div>
             <div class="header-actions">
                 <!-- Language Selector -->
@@ -154,11 +154,8 @@
                                         </div>
                                     </div>
                                     <div class="mock-content">
-                                        <div class="mock-app-icon">
-                                            <div class="animated-radar"></div>
-                                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                        </div>
-                                        <div class="mock-status-text" id="mock-screen-text">System Active</div>
+                                        <canvas id="device-screen-canvas" width="176" height="280"></canvas>
+                                        <div class="mock-status-text" id="mock-screen-text">Live preview</div>
                                     </div>
                                     <div class="mock-navbar">
                                         <div class="nav-bar-btn" id="sim-back">◁</div>

@@ -1,14 +1,14 @@
-# Mobile OS - Master Makefile
+# Orion OS - Master Makefile
 
 export CC := aarch64-linux-gnu-gcc
 export CXX := aarch64-linux-gnu-g++
 export AR := aarch64-linux-gnu-ar
 export LDFLAGS := -static
 
-SUBDIRS := libs core services ui apps
+SUBDIRS := libs core services ui apps paket_yönetimi
 
 
-.PHONY: all clean $(SUBDIRS)
+.PHONY: all clean update-deps check-deps $(SUBDIRS)
 
 all:
 	@echo "============================================="
@@ -38,3 +38,9 @@ clean:
 	@echo "============================================="
 	@echo "✅ Cleanup complete."
 	@echo "============================================="
+
+update-deps:
+	@bash scripts/update-deps.sh --all
+
+check-deps:
+	@bash scripts/update-deps.sh --check --no-sudo

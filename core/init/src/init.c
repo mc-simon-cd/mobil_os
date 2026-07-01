@@ -97,6 +97,7 @@ int parse_init_rc(const char *filename) {
             current_svc->pid = -1;
             current_svc->respawn = 0;
             current_svc->active = 0;
+            current_svc->service_class = SVC_CLASS_DEFAULT;
 
             // Prepare arguments
             current_svc->args[0] = strdup(path);
@@ -116,11 +117,16 @@ int parse_init_rc(const char *filename) {
             
             int scanned = sscanf(line, "%31s %127s %127s", cmd, arg1, arg2);
             if (scanned >= 1) {
-                if (strcmp(cmd, "mount") == 0) {
-                    mount_essential_filesystems();
-                } else if (strcmp(cmd, "mkdir") == 0 && scanned >= 2) {
-                    mkdir(arg1, 0755);
-                    LOG_INFO("Created system directory: %s", arg1);
+                if (strcmp(cmd, "mkdir") == 0 && scanned >= 2) {
+                    mode_t mode = 0755;
+                    if (scanned >= 3) {
+                        mode = (mode_t)strtol(arg2, NULL, 8);
+                    }
+                    if (mkdir(arg1, mode) != 0 && errno != EEXIST) {
+                        LOG_WARN("Failed to create directory %s: %s", arg1, strerror(errno));
+                    } else {
+                        LOG_INFO("Created system directory: %s (mode %o)", arg1, mode);
+                    }
                 } else if (strcmp(cmd, "write") == 0 && scanned >= 3) {
                     FILE *w = fopen(arg1, "w");
                     if (w) {
@@ -133,10 +139,27 @@ int parse_init_rc(const char *filename) {
             continue;
         }
 
-        // Handle service attributes (respawn)
+        // Handle service attributes (class, args, respawn)
         if (current_svc != NULL) {
-            if (strcmp(line, "class main") == 0) {
-                // Main classification identifier placeholder
+            if (strncmp(line, "class ", 6) == 0) {
+                const char *cls = line + 6;
+                if (strcmp(cls, "core") == 0) {
+                    current_svc->service_class = SVC_CLASS_CORE;
+                } else if (strcmp(cls, "main") == 0) {
+                    current_svc->service_class = SVC_CLASS_MAIN;
+                }
+            } else if (strncmp(line, "args ", 5) == 0) {
+                char arg_path[128] = "";
+                if (sscanf(line + 5, "%127s", arg_path) == 1) {
+                    if (current_svc->arg_count >= MAX_ARGS - 1) {
+                        LOG_ERROR("Too many arguments for service '%s'", current_svc->name);
+                    } else {
+                        current_svc->args[current_svc->arg_count] = strdup(arg_path);
+                        current_svc->arg_count++;
+                        current_svc->args[current_svc->arg_count] = NULL;
+                        LOG_INFO("  Added argument for '%s': %s", current_svc->name, arg_path);
+                    }
+                }
             } else if (strcmp(line, "respawn") == 0) {
                 current_svc->respawn = 1;
                 LOG_INFO("  Enabled process auto-respawn loop for '%s'", current_svc->name);
@@ -148,32 +171,69 @@ int parse_init_rc(const char *filename) {
     return 0;
 }
 
-int launch_services(void) {
+static int spawn_service(service_t *svc) {
+    if (svc->pid != -1) {
+        return 0;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        LOG_ERROR("Failed to fork daemon '%s': %s", svc->name, strerror(errno));
+        return -1;
+    }
+
+    if (pid == 0) {
+        execv(svc->path, svc->args);
+        LOG_ERROR("Failed to execv daemon target '%s' (%s): %s", svc->name, svc->path, strerror(errno));
+        exit(127);
+    }
+
+    svc->pid = pid;
+    svc->active = 1;
+    LOG_INFO("Spawned service daemon '%s' [PID: %d]", svc->name, pid);
+    return 0;
+}
+
+static int launch_service_class(service_class_t target_class) {
     for (int i = 0; i < service_count; i++) {
         service_t *svc = &services[i];
-        if (svc->pid != -1) continue; // Already running
-
-        pid_t pid = fork();
-        if (pid < 0) {
-            LOG_ERROR("Failed to fork daemon '%s': %s", svc->name, strerror(errno));
+        if (svc->service_class != target_class) {
+            continue;
+        }
+        if (spawn_service(svc) != 0) {
             return -1;
         }
+        // Stagger forks so heavy daemons can bind sockets before dependents start
+        usleep(400000);
+    }
+    return 0;
+}
 
-        if (pid == 0) {
-            // Child process execution context
-            LOG_INFO("Subprocess child '%s' entering execv...", svc->name);
-            execv(svc->path, svc->args);
-            
-            // If execv returns, compilation target or binary path was missing
-            LOG_ERROR("Failed to execv daemon target '%s' (%s): %s", svc->name, svc->path, strerror(errno));
-            exit(127);
-        } else {
-            // Parent context
-            svc->pid = pid;
-            svc->active = 1;
-            LOG_INFO("Spawned service daemon '%s' [PID: %d]", svc->name, pid);
+int launch_services(void) {
+    LOG_INFO("Launching core services...");
+    if (launch_service_class(SVC_CLASS_CORE) != 0) {
+        return -1;
+    }
+
+    // Give IPC broker time to bind its socket before main services start
+    usleep(500000);
+
+    LOG_INFO("Launching main services...");
+    if (launch_service_class(SVC_CLASS_MAIN) != 0) {
+        return -1;
+    }
+
+    LOG_INFO("Launching unclassified services...");
+    for (int i = 0; i < service_count; i++) {
+        service_t *svc = &services[i];
+        if (svc->service_class != SVC_CLASS_DEFAULT) {
+            continue;
+        }
+        if (spawn_service(svc) != 0) {
+            return -1;
         }
     }
+
     return 0;
 }
 

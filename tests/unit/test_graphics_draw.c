@@ -65,24 +65,30 @@ int main(void) {
     canvas_draw_circle(&c, 475, 280, 60, 0x00ff88, false);
     printf("  ✅ Circles drawn.\n");
 
-    // 6. Draw Text strings
+    // 6. Draw rounded rect and gradient
+    printf("  [TEST] Drawing rounded rect and gradient...\n");
+    canvas_draw_rounded_rect(&c, 220, 80, 150, 100, 16, 0x8b5cf6ff, true);
+    canvas_draw_gradient_rect(&c, 220, 200, 150, 80, 0x10b981ff, 0x3b82f6ff);
+    printf("  ✅ Rounded rect and gradient drawn.\n");
+
+    // 7. Draw Text strings
     printf("  [TEST] Drawing text...\n");
     uint32_t white = 0xffffff;
     uint32_t orange = 0xffa500;
     canvas_draw_text(&c, 210, 20, "2D GRAPHICS ENGINE TEST", white);
     canvas_draw_text(&c, 210, 35, "=====================", white);
-    canvas_draw_text(&c, 220, 120, "Mobile OS 1.0 Alpha", orange);
+    canvas_draw_text(&c, 220, 120, "Orion OS 1.0 Alpha", orange);
     canvas_draw_text(&c, 220, 220, "Draw primitives:\n- Lines\n- Rectangles\n- Circles\n- 8x8 Bitmap Fonts", white);
     printf("  ✅ Text strings drawn.\n");
 
-    // 7. Save Canvas to PPM file
+    // 8. Save Canvas to PPM file
     printf("  [TEST] Exporting canvas to out/graphics_test.ppm...\n");
     // Make sure output folder structure exists or write directly to workspace out directory
     int save_status = canvas_save_ppm(&c, "out/graphics_test.ppm");
     assert(save_status == 0);
     printf("  ✅ PPM image exported successfully.\n");
 
-    // 8. Free Canvas memory
+    // 9. Free Canvas memory
     printf("  [TERM] Freeing canvas resources...\n");
     canvas_free(&c);
     assert(c.pixels == NULL);

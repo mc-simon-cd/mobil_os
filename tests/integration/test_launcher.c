@@ -25,7 +25,7 @@
 #include <sys/wait.h>
 
 int main(void) {
-    printf("\n🧪 Starting Mobile OS Complete System Boot Integration Tests...\n");
+    printf("\n🧪 Starting Orion OS Complete System Boot Integration Tests...\n");
 
     // 1. Unlink stale sockets first
     unlink("/tmp/servicemanager.sock");
@@ -69,7 +69,7 @@ int main(void) {
     pid_t l_pid = fork();
     assert(l_pid >= 0);
     if (l_pid == 0) {
-        execl("../../out/rootfs/system/bin/launcher", "launcher", NULL);
+        execl("../../out/rootfs/system/bin/launcher", "launcher", "--oneshot", NULL);
         perror("execl launcher failed");
         exit(1);
     }
@@ -104,6 +104,6 @@ int main(void) {
     unlink("/tmp/surfaceflinger.sock");
     unlink("/tmp/powermanager.sock");
 
-    printf("🎉 All Mobile OS Bootstrap Integration Tests Passed Successfully!\n\n");
+    printf("🎉 All Orion OS Bootstrap Integration Tests Passed Successfully!\n\n");
     return 0;
 }

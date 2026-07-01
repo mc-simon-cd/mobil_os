@@ -19,6 +19,53 @@
 #include <string.h>
 #include <stdio.h>
 
+static uint8_t color_channel(uint32_t color, int shift) {
+    return (uint8_t)((color >> shift) & 0xFF);
+}
+
+static uint32_t lerp_color(uint32_t a, uint32_t b, int32_t t_num, int32_t t_den) {
+    if (t_den <= 0) return a;
+    uint8_t ar = color_channel(a, 16), ag = color_channel(a, 8), ab = color_channel(a, 0);
+    uint8_t aa = color_channel(a, 24);
+    uint8_t br = color_channel(b, 16), bg = color_channel(b, 8), bb = color_channel(b, 0);
+    uint8_t ba = color_channel(b, 24);
+    uint8_t r = (uint8_t)(ar + (br - ar) * t_num / t_den);
+    uint8_t g = (uint8_t)(ag + (bg - ag) * t_num / t_den);
+    uint8_t bl = (uint8_t)(ab + (bb - ab) * t_num / t_den);
+    uint8_t al = (uint8_t)(aa + (ba - aa) * t_num / t_den);
+    return ((uint32_t)al << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | bl;
+}
+
+static bool inside_rounded_rect(int32_t px, int32_t py, int32_t x, int32_t y,
+                                int32_t w, int32_t h, int32_t r) {
+    if (px < x || py < y || px >= x + w || py >= y + h) return false;
+    if (r <= 0) return true;
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+
+    if (px < x + r && py < y + r) {
+        int32_t dx = px - (x + r);
+        int32_t dy = py - (y + r);
+        return dx * dx + dy * dy <= r * r;
+    }
+    if (px >= x + w - r && py < y + r) {
+        int32_t dx = px - (x + w - r - 1);
+        int32_t dy = py - (y + r);
+        return dx * dx + dy * dy <= r * r;
+    }
+    if (px < x + r && py >= y + h - r) {
+        int32_t dx = px - (x + r);
+        int32_t dy = py - (y + h - r - 1);
+        return dx * dx + dy * dy <= r * r;
+    }
+    if (px >= x + w - r && py >= y + h - r) {
+        int32_t dx = px - (x + w - r - 1);
+        int32_t dy = py - (y + h - r - 1);
+        return dx * dx + dy * dy <= r * r;
+    }
+    return true;
+}
+
 // Embedded 8x8 Bitmap Font for ASCII 32 (' ') to 127
 // Each character is represented by 8 bytes (each byte is a row of 8 pixels)
 static const uint8_t font8x8[96][8] = {
@@ -126,6 +173,14 @@ int canvas_init(canvas_t *c, int32_t width, int32_t height) {
     c->width = width;
     c->height = height;
     memset(c->pixels, 0, width * height * sizeof(uint32_t));
+    return 0;
+}
+
+int canvas_init_external(canvas_t *c, int32_t width, int32_t height, uint32_t *pixels) {
+    if (!c || width <= 0 || height <= 0 || !pixels) return -1;
+    c->pixels = pixels;
+    c->width = width;
+    c->height = height;
     return 0;
 }
 
@@ -272,6 +327,72 @@ void canvas_draw_text(canvas_t *c, int32_t x, int32_t y, const char *text, uint3
         }
         text++;
     }
+}
+
+void canvas_draw_rounded_rect(canvas_t *c, int32_t x, int32_t y, int32_t w, int32_t h,
+                              int32_t radius, uint32_t color, bool fill) {
+    if (!c || !c->pixels || w <= 0 || h <= 0) return;
+    if (!fill) {
+        canvas_draw_line(c, x + radius, y, x + w - radius - 1, y, color);
+        canvas_draw_line(c, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
+        canvas_draw_line(c, x, y + radius, x, y + h - radius - 1, color);
+        canvas_draw_line(c, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
+        canvas_draw_circle(c, x + radius, y + radius, radius, color, false);
+        canvas_draw_circle(c, x + w - radius - 1, y + radius, radius, color, false);
+        canvas_draw_circle(c, x + radius, y + h - radius - 1, radius, color, false);
+        canvas_draw_circle(c, x + w - radius - 1, y + h - radius - 1, radius, color, false);
+        return;
+    }
+    for (int32_t py = y; py < y + h; py++) {
+        for (int32_t px = x; px < x + w; px++) {
+            if (inside_rounded_rect(px, py, x, y, w, h, radius)) {
+                canvas_set_pixel(c, px, py, color);
+            }
+        }
+    }
+}
+
+void canvas_draw_gradient_rect(canvas_t *c, int32_t x, int32_t y, int32_t w, int32_t h,
+                               uint32_t color_top, uint32_t color_bottom) {
+    if (!c || !c->pixels || w <= 0 || h <= 0) return;
+    for (int32_t row = 0; row < h; row++) {
+        uint32_t color = lerp_color(color_top, color_bottom, row, h > 1 ? h - 1 : 1);
+        canvas_draw_line(c, x, y + row, x + w - 1, y + row, color);
+    }
+}
+
+void canvas_draw_bitmap_mono(canvas_t *c, int32_t x, int32_t y, int32_t w, int32_t h,
+                             const uint8_t *bits, uint32_t fg, uint32_t bg, bool transparent_bg) {
+    if (!c || !c->pixels || !bits || w <= 0 || h <= 0) return;
+    int32_t row_bytes = (w + 7) / 8;
+    for (int32_t row = 0; row < h; row++) {
+        for (int32_t col = 0; col < w; col++) {
+            int32_t bit = (bits[row * row_bytes + col / 8] >> (7 - (col % 8))) & 1;
+            if (bit) {
+                canvas_set_pixel(c, x + col, y + row, fg);
+            } else if (!transparent_bg) {
+                canvas_set_pixel(c, x + col, y + row, bg);
+            }
+        }
+    }
+}
+
+void canvas_draw_bitmap_mono_scaled(canvas_t *c, int32_t x, int32_t y, int32_t w, int32_t h,
+                                    int32_t scale, const uint8_t *bits, uint32_t fg, bool transparent_bg) {
+    if (!c || !c->pixels || !bits || w <= 0 || h <= 0 || scale <= 0) return;
+    int32_t row_bytes = (w + 7) / 8;
+    for (int32_t row = 0; row < h; row++) {
+        for (int32_t col = 0; col < w; col++) {
+            int32_t bit = (bits[row * row_bytes + col / 8] >> (7 - (col % 8))) & 1;
+            if (!bit) continue;
+            for (int32_t sy = 0; sy < scale; sy++) {
+                for (int32_t sx = 0; sx < scale; sx++) {
+                    canvas_set_pixel(c, x + col * scale + sx, y + row * scale + sy, fg);
+                }
+            }
+        }
+    }
+    (void)transparent_bg;
 }
 
 int canvas_save_ppm(const canvas_t *c, const char *filename) {

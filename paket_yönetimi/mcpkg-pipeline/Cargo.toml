@@ -1,0 +1,19 @@
+[package]
+name = "mcpkg-pipeline"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+mcpkg-core = { path = "../mcpkg-core" }
+mcpkg-crypto = { path = "../mcpkg-crypto" }
+mcpkg-sandbox = { path = "../mcpkg-sandbox" }
+nix = { version = "0.27", features = ["user"] }
+sha2 = "0.10"
+ed25519-dalek = "2.1"
+zip = "0.6"
+tempfile = "3.8"
+reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
+serde_json = "1.0"
+base64 = "0.21"
+hex = "0.4"

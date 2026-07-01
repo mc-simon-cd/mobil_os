@@ -1,8 +1,7 @@
 # System Boot Configuration Manifest (init.rc)
-# Mobile OS v1.0.0-alpha — mcsimon
+# Orion OS v1.0.0-alpha — mcsimon
 
 on boot
-    mount
     mkdir /data 0755 root root
     mkdir /cache 0755 root root
     mkdir /tmp 0777 root root
@@ -11,20 +10,51 @@ on boot
     mkdir /system/bin 0755 root root
     mkdir /system/lib 0755 root root
 
-# Servicemanager - IPC Broker Service (başlatılacak ilk servis)
+# IPC broker — must start before any Binder client
 service servicemanager /system/bin/servicemanager
     class core
     user root
     respawn
 
-# Power Manager - Battery & Power Profile Daemon
+# Input pipeline — required before compositor and shell
+service inputflinger /system/bin/inputflinger
+    class core
+    user root
+    respawn
+
+# Graphics compositor — register before shell clients
+# Legacy PPM mode (default)
+service surfaceflinger /system/bin/surfaceflinger
+    class core
+    user root
+    respawn
+
+# Power & network-facing daemons
 service powermanager /system/bin/powermanager
     class main
     user root
     respawn
 
-# API Gateway - REST HTTP Server (host:9595 -> guest:8080)
 service apigateway /system/bin/apigateway
+    class main
+    user root
+    respawn
+
+# Shell UI
+service statusbar /system/bin/statusbar
+    class main
+    user root
+    respawn
+
+# Application runtime (web control center) and shell
+service apprunner /system/bin/apprunner
+    class main
+    user root
+    args /system/apps/control_center
+    respawn
+
+# Shell home screen — interactive input loop with lock screen
+service launcher /system/bin/launcher
     class main
     user root
     respawn

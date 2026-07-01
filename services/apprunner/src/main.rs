@@ -115,10 +115,15 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} <app_directory_path>", args[0]);
+        eprintln!("[INFO] [APPRUNNER] Example: {} /system/apps/control_center", args[0]);
+        eprintln!("[INFO] [APPRUNNER] Not a standalone daemon — provide an app directory with manifest.json.");
         std::process::exit(1);
     }
 
-    let app_dir = &args[1];
+    run_app(&args[1]);
+}
+
+fn run_app(app_dir: &str) {
     let manifest_path = Path::new(app_dir).join("manifest.json");
 
     if !manifest_path.exists() {

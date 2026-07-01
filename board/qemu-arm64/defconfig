@@ -1,4 +1,4 @@
-# Linux Kernel Config Fragment - Mobile OS QEMU ARM64
+# Linux Kernel Config Fragment - Orion OS QEMU ARM64
 
 # Target system architecture options
 CONFIG_ARM64=y

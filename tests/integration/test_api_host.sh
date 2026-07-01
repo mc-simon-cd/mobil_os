@@ -162,4 +162,27 @@ if [[ "$LAST_RESP" != *'"status":"success"'* || "$LAST_RESP" != *'"type":1'* || 
 fi
 echo "✅ Test 7 Passed!"
 
+# Test 8: GET /api/display/info (Milestone 15 — PPM preview metadata)
+echo "👉 Test 8: GET /api/display/info"
+mkdir -p "${REPO_DIR}/out"
+printf 'P6\n2 2\n255\n' > "${REPO_DIR}/out/display_composited.ppm"
+printf '\xff\0\0\0\xff\0\0\0\xff' >> "${REPO_DIR}/out/display_composited.ppm"
+DISPLAY_INFO=$(curl -s http://localhost:8085/api/display/info)
+echo "   Response: $DISPLAY_INFO"
+if [[ "$DISPLAY_INFO" != *'"available":true'* || "$DISPLAY_INFO" != *'"format":"ppm"'* ]]; then
+    echo "❌ Test 8 Failed!"
+    exit 1
+fi
+echo "✅ Test 8 Passed!"
+
+# Test 9: GET /api/display/frame
+echo "👉 Test 9: GET /api/display/frame"
+FRAME_HEAD=$(curl -s http://localhost:8085/api/display/frame | head -c 2)
+echo "   PPM magic: $FRAME_HEAD"
+if [[ "$FRAME_HEAD" != "P6" ]]; then
+    echo "❌ Test 9 Failed!"
+    exit 1
+fi
+echo "✅ Test 9 Passed!"
+
 echo "🎉 All API Gateway Integration Tests Passed Successfully!"

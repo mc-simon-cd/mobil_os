@@ -28,7 +28,7 @@ int main(void) {
     // 1. Test Writing Primitives
     assert(parcel_write_int32(&p, 42) == 0);
     assert(parcel_write_uint32(&p, 1337) == 0);
-    assert(parcel_write_string(&p, "Hello Mobile OS!") == 0);
+    assert(parcel_write_string(&p, "Hello Orion OS!") == 0);
 
     // 2. Test Reading Primitives
     int32_t val1;
@@ -44,8 +44,8 @@ int main(void) {
     printf("  ✅ UInt32 Match: %u == 1337\n", val2);
 
     assert(parcel_read_string(&p, str_buf, sizeof(str_buf)) == 0);
-    assert(strcmp(str_buf, "Hello Mobile OS!") == 0);
-    printf("  ✅ String Match: \"%s\" == \"Hello Mobile OS!\"\n", str_buf);
+    assert(strcmp(str_buf, "Hello Orion OS!") == 0);
+    printf("  ✅ String Match: \"%s\" == \"Hello Orion OS!\"\n", str_buf);
 
     parcel_free(&p);
     printf("🎉 All IPC Unit Tests Passed Successfully!\n\n");

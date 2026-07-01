@@ -17,6 +17,12 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use libipc_rs::{ipc_connect, ipc_send_transaction, Parcel};
 
+const DISPLAY_FRAME_PATHS: &[&str] = &[
+    "out/display_composited.ppm",
+    "display_composited.ppm",
+    "/out/display_composited.ppm",
+];
+
 const SERVICEMANAGER_SOCKET: &str = "/tmp/servicemanager.sock";
 
 // Service Manager command codes
@@ -206,6 +212,101 @@ fn get_query_param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
     None
 }
 
+fn read_display_frame() -> Option<Vec<u8>> {
+    for path in DISPLAY_FRAME_PATHS {
+        if let Ok(data) = std::fs::read(path) {
+            if data.len() >= 11 && data.starts_with(b"P6") {
+                return Some(data);
+            }
+        }
+    }
+    None
+}
+
+fn read_ppm_line(data: &[u8], pos: &mut usize) -> Option<String> {
+    while *pos < data.len() && matches!(data[*pos], b' ' | b'\r' | b'\n' | b'\t') {
+        *pos += 1;
+    }
+    if *pos >= data.len() {
+        return None;
+    }
+    let start = *pos;
+    while *pos < data.len() && data[*pos] != b'\n' {
+        *pos += 1;
+    }
+    let line = std::str::from_utf8(&data[start..*pos]).ok()?.trim().to_string();
+    if *pos < data.len() {
+        *pos += 1;
+    }
+    Some(line)
+}
+
+fn parse_ppm_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    if data.len() < 4 || &data[0..2] != b"P6" {
+        return None;
+    }
+    let mut pos = 2usize;
+    let mut dim_line = read_ppm_line(data, &mut pos)?;
+    while dim_line.is_empty() || dim_line.starts_with('#') {
+        dim_line = read_ppm_line(data, &mut pos)?;
+    }
+    let mut parts = dim_line.split_whitespace();
+    let w: u32 = parts.next()?.parse().ok()?;
+    let h: u32 = parts.next()?.parse().ok()?;
+    Some((w, h))
+}
+
+fn handle_get_display_info() -> String {
+    match read_display_frame() {
+        Some(data) => {
+            let (w, h) = parse_ppm_dimensions(&data).unwrap_or((0, 0));
+            format!(
+                r#"{{"status":"ok","available":true,"width":{},"height":{},"format":"ppm","size":{}}}"#,
+                w,
+                h,
+                data.len()
+            )
+        }
+        None => r#"{"status":"ok","available":false,"width":0,"height":0,"format":"ppm","size":0}"#
+            .to_string(),
+    }
+}
+
+fn handle_get_display_frame(composite_first: bool) -> Result<Vec<u8>, String> {
+    if composite_first {
+        handle_post_graphics_composite()?;
+    }
+    read_display_frame().ok_or_else(|| {
+        "Composited display frame not found (out/display_composited.ppm)".to_string()
+    })
+}
+
+fn send_binary_response(
+    stream: &mut TcpStream,
+    status_code: u16,
+    status_text: &str,
+    content_type: &str,
+    body: &[u8],
+) {
+    let header = format!(
+        "HTTP/1.1 {} {}\r\n\
+         Content-Type: {}\r\n\
+         Content-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Cache-Control: no-cache\r\n\
+         Connection: close\r\n\r\n",
+        status_code,
+        status_text,
+        content_type,
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+}
+
 fn send_response(mut stream: &TcpStream, status_code: u16, status_text: &str, json_body: &str) {
     let response = format!(
         "HTTP/1.1 {} {}\r\n\
@@ -269,6 +370,27 @@ fn handle_connection(mut stream: TcpStream) {
                 Err(err) => {
                     let err_json = format!(r#"{{"error":"Service Unavailable","message":"{}"}}"#, err);
                     send_response(&stream, 503, "Service Unavailable", &err_json);
+                }
+            }
+        }
+        ("GET", "/api/display/info") => {
+            send_response(&stream, 200, "OK", &handle_get_display_info());
+        }
+        ("GET", "/api/display/frame") => {
+            let composite_first = get_query_param(query_string, "composite")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            match handle_get_display_frame(composite_first) {
+                Ok(ppm) => send_binary_response(
+                    &mut stream,
+                    200,
+                    "OK",
+                    "image/x-portable-pixmap",
+                    &ppm,
+                ),
+                Err(err) => {
+                    let err_json = format!(r#"{{"error":"Not Found","message":"{}"}}"#, err);
+                    send_response(&stream, 404, "Not Found", &err_json);
                 }
             }
         }

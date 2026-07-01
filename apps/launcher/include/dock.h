@@ -17,8 +17,12 @@
 #ifndef DOCK_H
 #define DOCK_H
 
-// Desktop Dock Layout methods
-void dock_init(void);
-void dock_render(void);
+#include "graphics.h"
+#include <stdint.h>
 
-#endif // DOCK_H
+void dock_init(void);
+void dock_render(canvas_t *canvas);
+int dock_hit_test(int32_t x, int32_t y);
+const char *dock_package_at(int index);
+
+#endif /* DOCK_H */

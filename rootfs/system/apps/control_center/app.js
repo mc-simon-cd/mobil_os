@@ -532,12 +532,112 @@ document.getElementById('sim-home').addEventListener('click', () => simulateKeyC
 document.getElementById('sim-back').addEventListener('click', () => simulateKeyClick(158, 'KEY_BACK')); // 158 = KEY_BACK
 document.getElementById('sim-recent').addEventListener('click', () => simulateKeyClick(139, 'KEY_MENU')); // 139 = KEY_MENU
 
+// --- Live device display preview (Milestone 15) ---
+const DEVICE_DISPLAY_W = 1080;
+const DEVICE_DISPLAY_H = 2400;
+const EV_ABS = 3;
+const ABS_X = 0;
+const ABS_Y = 1;
+const BTN_TOUCH = 330;
+
+function parsePpmP6(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    let pos = 0;
+
+    function readLine() {
+        const start = pos;
+        while (pos < bytes.length && bytes[pos] !== 0x0a) pos++;
+        const line = new TextDecoder().decode(bytes.subarray(start, pos));
+        pos++;
+        return line;
+    }
+
+    if (readLine() !== 'P6') throw new Error('Not a P6 PPM image');
+
+    let dimLine = readLine();
+    while (dimLine.startsWith('#')) dimLine = readLine();
+    const [width, height] = dimLine.trim().split(/\s+/).map(Number);
+
+    let maxValLine = readLine();
+    while (maxValLine.startsWith('#')) maxValLine = readLine();
+    if (!maxValLine.trim()) maxValLine = readLine();
+
+    return { width, height, rgb: bytes.subarray(pos) };
+}
+
+function renderPpmToCanvas(arrayBuffer, canvas) {
+    if (!canvas) return;
+    const { width, height, rgb } = parsePpmP6(arrayBuffer);
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(canvas.width, canvas.height);
+
+    for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+            const srcX = Math.floor(x * width / canvas.width);
+            const srcY = Math.floor(y * height / canvas.height);
+            const srcIdx = (srcY * width + srcX) * 3;
+            const dstIdx = (y * canvas.width + x) * 4;
+            imageData.data[dstIdx] = rgb[srcIdx];
+            imageData.data[dstIdx + 1] = rgb[srcIdx + 1];
+            imageData.data[dstIdx + 2] = rgb[srcIdx + 2];
+            imageData.data[dstIdx + 3] = 255;
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+let displayPreviewOk = false;
+
+async function fetchDisplayFrame() {
+    try {
+        const response = await fetch(`${API_BASE}/display/frame?composite=1`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        const canvas = document.getElementById('device-screen-canvas');
+        renderPpmToCanvas(buffer, canvas);
+        if (!displayPreviewOk) {
+            displayPreviewOk = true;
+            addLog('Live device display preview connected.', 'success');
+            document.getElementById('mock-screen-text').innerText = 'Live';
+        }
+    } catch (e) {
+        if (!displayPreviewOk) {
+            document.getElementById('mock-screen-text').innerText = 'No signal';
+        }
+    }
+}
+
+async function injectTouchAt(canvasX, canvasY, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((canvasX - rect.left) / rect.width * DEVICE_DISPLAY_W);
+    const y = Math.floor((canvasY - rect.top) / rect.height * DEVICE_DISPLAY_H);
+
+    await injectKeyEvent(EV_ABS, ABS_X, x);
+    await injectKeyEvent(EV_ABS, ABS_Y, y);
+    await injectKeyEvent(1, BTN_TOUCH, 1);
+    setTimeout(async () => {
+        await injectKeyEvent(1, BTN_TOUCH, 0);
+        fetchLastInputEvent();
+        setTimeout(fetchDisplayFrame, 200);
+    }, 80);
+
+    addLog(`Touch injected at (${x}, ${y})`, 'info');
+    document.getElementById('mock-screen-text').innerText = `Tap ${x},${y}`;
+}
+
+const deviceCanvas = document.getElementById('device-screen-canvas');
+if (deviceCanvas) {
+    deviceCanvas.addEventListener('click', (e) => injectTouchAt(e.clientX, e.clientY, deviceCanvas));
+}
+
 // Polling intervals
 setInterval(fetchSystemStatus, 2000);
 setInterval(fetchLastInputEvent, 2000);
+setInterval(fetchDisplayFrame, 2500);
 
 // Initialize Page
 addLog(`Connecting to API Gateway at ${API_BASE}...`);
 loadTranslations('en');
 fetchSystemStatus();
 fetchLastInputEvent();
+fetchDisplayFrame();

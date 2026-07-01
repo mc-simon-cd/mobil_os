@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Mobile OS - Master Build Script
+# Orion OS - Master Build Script
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ OUT_DIR="${WORKSPACE_DIR}/out"
 ROOTFS_DIR="${OUT_DIR}/rootfs"
 
 echo "============================================="
-echo "🛠️   Mobile OS Compilation Pipeline starting"
+echo "🛠️   Orion OS Compilation Pipeline starting"
 echo "============================================="
 
 # 1. Run Dependency Verification
@@ -41,6 +41,8 @@ mkdir -p "${ROOTFS_DIR}/sys"
 mkdir -p "${ROOTFS_DIR}/dev"
 mkdir -p "${ROOTFS_DIR}/system/bin"
 mkdir -p "${ROOTFS_DIR}/system/lib"
+mkdir -p "${ROOTFS_DIR}/data/mcsimon/apps"
+mkdir -p "${ROOTFS_DIR}/cache/mcsimon/packages"
 
 # 3. Create Default configuration overlays
 echo "📝 [INFO] Generating basic rootfs config files..."
@@ -70,10 +72,10 @@ EOF
 
 # Generate OS release identification
 cat << 'EOF' > "${ROOTFS_DIR}/etc/os-release"
-NAME="Mobile OS"
+NAME="Orion OS"
 VERSION="1.0-alpha"
-ID=mobileos
-PRETTY_NAME="Mobile OS 1.0 Alpha (QEMU-ARM64)"
+ID=orionos
+PRETTY_NAME="Orion OS 1.0 Alpha (QEMU-ARM64)"
 EOF
 
 # 4. Copy locale assets
@@ -92,10 +94,10 @@ cp -r "${WORKSPACE_DIR}/rootfs/system/usr/share/locale/"* "${ROOTFS_DIR}/system/
 # 6. Trigger Makefiles if present
 if [ -f "${WORKSPACE_DIR}/Makefile" ]; then
     echo "🏗️  [INFO] Invoking Makefile systems..."
-    make -C "${WORKSPACE_DIR}"
+    make -C "${WORKSPACE_DIR}" CC="${CC:-aarch64-linux-gnu-gcc}" CXX="${CXX:-aarch64-linux-gnu-g++}" AR="${AR:-aarch64-linux-gnu-ar}"
 fi
 
 echo "============================================="
-echo "🎉  [SUCCESS] Mobile OS Build Complete!"
+echo "🎉  [SUCCESS] Orion OS Build Complete!"
 echo "    Rootfs prepared: ${ROOTFS_DIR}"
 echo "============================================="

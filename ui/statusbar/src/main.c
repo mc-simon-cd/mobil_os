@@ -16,12 +16,21 @@
 
 #define _GNU_SOURCE
 
+#ifdef TRACK_WAYLAND
+#include <wayland-client.h>
+#include "xdg-shell-protocol.h"
+#include <sys/mman.h>
+#include <fcntl.h>
+#endif
+
 #include "ipc/binder.h"
 #include "ipc/parcel.h"
 #include "graphics.h"
 #include "i18n.h"
+#include "../../theme.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
@@ -43,6 +52,164 @@ static canvas_t gCanvas;
 static char gPowerManagerPath[128] = "";
 static char gSurfaceFlingerPath[128] = "";
 static int32_t gSurfaceId = -1;
+static bool g_use_wayland_mode = false;
+static volatile sig_atomic_t gRunning = 1;
+
+#ifdef TRACK_WAYLAND
+static struct wl_display *g_wl_display = NULL;
+static struct wl_registry *g_wl_registry = NULL;
+static struct wl_compositor *g_wl_compositor = NULL;
+static struct wl_shm *g_wl_shm = NULL;
+static struct xdg_wm_base *g_xdg_wm_base = NULL;
+static struct wl_surface *g_wl_surface = NULL;
+static struct xdg_surface *g_xdg_surface = NULL;
+static struct xdg_toplevel *g_xdg_toplevel = NULL;
+static struct wl_buffer *g_wl_buffer = NULL;
+static uint32_t *g_shm_data = NULL;
+static int g_shm_fd = -1;
+static size_t g_shm_size = 0;
+
+static int create_shm_file(size_t size) {
+    int fd = -1;
+#ifdef __linux__
+    fd = memfd_create("orion-shm", MFD_CLOEXEC);
+    if (fd >= 0) {
+        if (ftruncate(fd, size) < 0) {
+            close(fd);
+            return -1;
+        }
+        return fd;
+    }
+#endif
+    char name[] = "/tmp/orion-shm-XXXXXX";
+    fd = mkstemp(name);
+    if (fd < 0) return -1;
+    unlink(name);
+    if (ftruncate(fd, size) < 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
+    (void)data;
+    xdg_wm_base_pong(xdg_wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener xdg_wm_base_listener = {
+    .ping = xdg_wm_base_ping,
+};
+
+static void registry_global(void *data, struct wl_registry *registry,
+                            uint32_t name, const char *interface, uint32_t version) {
+    (void)data;
+    (void)version;
+    if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        g_wl_compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+    } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        g_wl_shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+    } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+        g_xdg_wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+        xdg_wm_base_add_listener(g_xdg_wm_base, &xdg_wm_base_listener, NULL);
+    }
+}
+
+static void registry_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
+    (void)data;
+    (void)registry;
+    (void)name;
+}
+
+static const struct wl_registry_listener registry_listener = {
+    .global = registry_global,
+    .global_remove = registry_global_remove,
+};
+
+static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
+    (void)data;
+    xdg_surface_ack_configure(xdg_surface, serial);
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+    .configure = xdg_surface_configure,
+};
+
+static void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
+                                   int32_t width, int32_t height, struct wl_array *states) {
+    (void)data;
+    (void)xdg_toplevel;
+    (void)width;
+    (void)height;
+    (void)states;
+}
+
+static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
+    (void)data;
+    (void)xdg_toplevel;
+    gRunning = 0;
+}
+
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+    .configure = xdg_toplevel_configure,
+    .close = xdg_toplevel_close,
+};
+
+static int init_wayland(void) {
+    g_wl_display = wl_display_connect(NULL);
+    if (!g_wl_display) {
+        fprintf(stderr, "[ERR] [STATUSBAR] Failed to connect to Wayland display\n");
+        return -1;
+    }
+
+    g_wl_registry = wl_display_get_registry(g_wl_display);
+    wl_registry_add_listener(g_wl_registry, &registry_listener, NULL);
+    wl_display_roundtrip(g_wl_display);
+
+    if (!g_wl_compositor || !g_wl_shm || !g_xdg_wm_base) {
+        fprintf(stderr, "[ERR] [STATUSBAR] Missing required Wayland globals\n");
+        return -1;
+    }
+
+    g_wl_surface = wl_compositor_create_surface(g_wl_compositor);
+    g_xdg_surface = xdg_wm_base_get_xdg_surface(g_xdg_wm_base, g_wl_surface);
+    xdg_surface_add_listener(g_xdg_surface, &xdg_surface_listener, NULL);
+
+    g_xdg_toplevel = xdg_surface_get_toplevel(g_xdg_surface);
+    xdg_toplevel_add_listener(g_xdg_toplevel, &xdg_toplevel_listener, NULL);
+    xdg_toplevel_set_title(g_xdg_toplevel, "Orion Statusbar");
+
+    wl_surface_commit(g_wl_surface);
+    wl_display_roundtrip(g_wl_display);
+
+    g_shm_size = 1080 * 100 * 4;
+    g_shm_fd = create_shm_file(g_shm_size);
+    if (g_shm_fd < 0) return -1;
+
+    g_shm_data = mmap(NULL, g_shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_shm_fd, 0);
+    if (g_shm_data == MAP_FAILED) return -1;
+
+    struct wl_shm_pool *pool = wl_shm_create_pool(g_wl_shm, g_shm_fd, g_shm_size);
+    g_wl_buffer = wl_shm_pool_create_buffer(pool, 0, 1080, 100, 1080 * 4, WL_SHM_FORMAT_XRGB8888);
+    wl_shm_pool_destroy(pool);
+
+    return 0;
+}
+
+static void cleanup_wayland(void) {
+    if (g_wl_buffer) wl_buffer_destroy(g_wl_buffer);
+    if (g_shm_data && g_shm_data != MAP_FAILED) munmap(g_shm_data, g_shm_size);
+    if (g_shm_fd >= 0) close(g_shm_fd);
+    if (g_xdg_toplevel) xdg_toplevel_destroy(g_xdg_toplevel);
+    if (g_xdg_surface) xdg_surface_destroy(g_xdg_surface);
+    if (g_wl_surface) wl_surface_destroy(g_wl_surface);
+    if (g_xdg_wm_base) xdg_wm_base_destroy(g_xdg_wm_base);
+    if (g_wl_shm) wl_shm_destroy(g_wl_shm);
+    if (g_wl_compositor) wl_compositor_destroy(g_wl_compositor);
+    if (g_wl_registry) wl_registry_destroy(g_wl_registry);
+    if (g_wl_display) wl_display_disconnect(g_wl_display);
+}
+#endif
 
 // Helper to resolve service paths via Servicemanager
 static int resolve_service_path(const char *service_name, char *out_path, size_t max_len) {
@@ -157,6 +324,39 @@ static void query_power_metrics(int *out_battery, char *out_mode, size_t max_mod
     }
 }
 
+static void draw_signal_bars(canvas_t *c, int32_t x, int32_t y, int level) {
+    if (level < 0) level = 0;
+    if (level > 4) level = 4;
+    for (int i = 0; i < 4; i++) {
+        int32_t bar_h = 8 + i * 5;
+        uint32_t col = (i < level) ? THEME_TEXT_PRIMARY : 0xFFFFFF22;
+        canvas_draw_rect(c, x + i * 8, y + (20 - bar_h), 5, bar_h, col, true);
+    }
+}
+
+static void draw_wifi_glyph(canvas_t *c, int32_t cx, int32_t cy) {
+    canvas_draw_circle(c, cx, cy + 8, 3, THEME_TEXT_PRIMARY, true);
+    canvas_draw_circle(c, cx, cy + 2, 8, THEME_TEXT_SECONDARY, false);
+    canvas_draw_circle(c, cx, cy - 2, 14, THEME_TEXT_SECONDARY, false);
+}
+
+static void draw_battery_gauge(canvas_t *c, int32_t x, int32_t y, int level) {
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+
+    canvas_draw_rounded_rect(c, x, y, 36, 18, 4, THEME_CARD_BORDER, false);
+    canvas_draw_rect(c, x + 36, y + 5, 3, 8, THEME_CARD_BORDER, true);
+
+    uint32_t col = THEME_ACCENT_GREEN;
+    if (level < 20) col = 0xEF4444FF;
+    else if (level < 50) col = THEME_ACCENT_AMBER;
+
+    int32_t fill_w = (level * 30) / 100;
+    if (fill_w > 0) {
+        canvas_draw_rounded_rect(c, x + 3, y + 3, fill_w, 12, 3, col, true);
+    }
+}
+
 // Render statusbar and save graphic frame
 static void draw_and_update(const char *notification) {
     // 1. Fetch current time
@@ -166,7 +366,7 @@ static void draw_and_update(const char *notification) {
     time(&rawtime);
     timeinfo = localtime(&rawtime);
     if (timeinfo) {
-        strftime(time_str, sizeof(time_str), "%H:%M:%S", timeinfo);
+        strftime(time_str, sizeof(time_str), "%H:%M", timeinfo);
     }
     
     // 2. Query power status
@@ -192,24 +392,39 @@ static void draw_and_update(const char *notification) {
     }
     const char *mode_val_lbl = i18n_get(mode_key);
     
+    draw_battery_gauge(&gCanvas, 20, 38, battery_level);
     char battery_text[64];
-    snprintf(battery_text, sizeof(battery_text), "🔋 %s: %d%%", bat_lbl, battery_level);
-    canvas_draw_text(&gCanvas, 24, 40, battery_text, 0x10B981FF); // Emerald green
-    
+    snprintf(battery_text, sizeof(battery_text), "%s %d%%", bat_lbl, battery_level);
+    canvas_draw_text(&gCanvas, 64, 44, battery_text, THEME_ACCENT_GREEN);
+
     char mode_text[64];
-    snprintf(mode_text, sizeof(mode_text), "⚡ %s: %s", mode_lbl, mode_val_lbl);
-    canvas_draw_text(&gCanvas, 240, 40, mode_text, 0x3B82F6FF); // Blue
-    
-    // 5. Draw Clock (Centered)
-    canvas_draw_text(&gCanvas, 490, 40, time_str, 0xFFFFFFFF); // White
-    
-    // 6. Draw active notifications (Amber alert style)
+    snprintf(mode_text, sizeof(mode_text), "%s: %s", mode_lbl, mode_val_lbl);
+    canvas_draw_text(&gCanvas, 200, 44, mode_text, THEME_ACCENT_BLUE);
+
+    canvas_draw_text(&gCanvas, 500, 44, time_str, THEME_TEXT_PRIMARY);
+
+    draw_wifi_glyph(&gCanvas, 900, 50);
+    draw_signal_bars(&gCanvas, 930, 30, 4);
+
     if (strlen(notification) > 0) {
         char notif_text[256];
-        snprintf(notif_text, sizeof(notif_text), "🔔 Info: %s", notification);
-        canvas_draw_text(&gCanvas, 730, 40, notif_text, 0xF59E0BFF); // Amber
+        snprintf(notif_text, sizeof(notif_text), "! %s", notification);
+        canvas_draw_rounded_rect(&gCanvas, 680, 28, 380, 44, 8, 0xF59E0B33, true);
+        canvas_draw_text(&gCanvas, 700, 44, notif_text, THEME_ACCENT_AMBER);
     }
     
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        if (g_wl_surface && g_wl_buffer) {
+            wl_surface_attach(g_wl_surface, g_wl_buffer, 0, 0);
+            wl_surface_damage(g_wl_surface, 0, 0, 1080, 100);
+            wl_surface_commit(g_wl_surface);
+            wl_display_flush(g_wl_display);
+        }
+        return;
+    }
+#endif
+
     // 7. Save PPM and Composite
     mkdir("out", 0777);
     char out_path[128] = "out/statusbar_display.ppm";
@@ -242,9 +457,18 @@ static void register_statusbar_service() {
     close(fd);
 }
 
+static void on_signal(int sig) {
+    (void)sig;
+    gRunning = 0;
+}
+
 int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    bool request_wayland = false;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--wayland") == 0) {
+            request_wayland = true;
+        }
+    }
     
     printf("\n=============================================\n");
     printf("🚥   Booting Mobile Shell Statusbar Daemon\n");
@@ -265,16 +489,43 @@ int main(int argc, char *argv[]) {
     }
     printf("[INFO] [STATUSBAR] Localization initialized: '%s'\n", lang_code);
     
+#ifdef TRACK_WAYLAND
+    if (request_wayland) {
+        printf("[INFO] [STATUSBAR] Initializing Wayland Client...\n");
+        if (init_wayland() == 0) {
+            g_use_wayland_mode = true;
+            printf("[INFO] [STATUSBAR] Running in Wayland mode.\n");
+        } else {
+            fprintf(stderr, "[WARN] [STATUSBAR] Failed to initialize Wayland client. Falling back to PPM.\n");
+        }
+    }
+#endif
+
     // 2. Initialize Canvas Buffer (1080 x 100)
-    canvas_init(&gCanvas, 1080, 100);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        if (canvas_init_external(&gCanvas, 1080, 100, g_shm_data) != 0) {
+            fprintf(stderr, "[ERR]  [STATUSBAR] Failed to initialize external canvas.\n");
+            return 1;
+        }
+    } else {
+#endif
+        if (canvas_init(&gCanvas, 1080, 100) != 0) {
+            return 1;
+        }
+#ifdef TRACK_WAYLAND
+    }
+#endif
     
-    // 3. Resolve required background services
-    printf("[INFO] [STATUSBAR] Resolving system services...\n");
-    resolve_service_path("mobile.powermanager", gPowerManagerPath, sizeof(gPowerManagerPath));
-    resolve_service_path("mobile.surfaceflinger", gSurfaceFlingerPath, sizeof(gSurfaceFlingerPath));
-    
-    // 4. Allocate visual compositor layer
-    allocate_statusbar_surface();
+    if (!g_use_wayland_mode) {
+        // 3. Resolve required background services
+        printf("[INFO] [STATUSBAR] Resolving system services...\n");
+        resolve_service_path("mobile.powermanager", gPowerManagerPath, sizeof(gPowerManagerPath));
+        resolve_service_path("mobile.surfaceflinger", gSurfaceFlingerPath, sizeof(gSurfaceFlingerPath));
+        
+        // 4. Allocate visual compositor layer
+        allocate_statusbar_surface();
+    }
     
     // 5. Establish host sockets
     unlink(STATUSBAR_SOCKET);
@@ -301,30 +552,48 @@ int main(int argc, char *argv[]) {
     // Register statusbar in system index
     register_statusbar_service();
     
+    signal(SIGINT, on_signal);
+    signal(SIGTERM, on_signal);
+    
     char current_notification[256] = "System Booting...";
     printf("[INFO] [STATUSBAR] Event listener listening at %s\n", STATUSBAR_SOCKET);
-    
-    int running = 1;
     
     // Render initial boot state frame
     draw_and_update(current_notification);
     
-    while (running) {
+    while (gRunning) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(server_fd, &readfds);
+        int max_fd = server_fd;
+
+#ifdef TRACK_WAYLAND
+        int wl_fd = -1;
+        if (g_use_wayland_mode && g_wl_display) {
+            wl_fd = wl_display_get_fd(g_wl_display);
+            FD_SET(wl_fd, &readfds);
+            if (wl_fd > max_fd) max_fd = wl_fd;
+            wl_display_flush(g_wl_display);
+        }
+#endif
         
         struct timeval timeout;
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
         
-        int activity = select(server_fd + 1, &readfds, NULL, NULL, &timeout);
+        int activity = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
         
         if (activity < 0) {
             if (errno == EINTR) continue;
             perror("select error");
             break;
         }
+
+#ifdef TRACK_WAYLAND
+        if (g_use_wayland_mode && wl_fd >= 0 && FD_ISSET(wl_fd, &readfds)) {
+            wl_display_dispatch(g_wl_display);
+        }
+#endif
         
         if (activity > 0 && FD_ISSET(server_fd, &readfds)) {
             int client_fd = accept(server_fd, NULL, NULL);
@@ -372,13 +641,15 @@ int main(int argc, char *argv[]) {
             }
         }
         
-        // Query background services paths again if they were initially not running
-        if (strlen(gPowerManagerPath) == 0) {
-            resolve_service_path("mobile.powermanager", gPowerManagerPath, sizeof(gPowerManagerPath));
-        }
-        if (strlen(gSurfaceFlingerPath) == 0) {
-            resolve_service_path("mobile.surfaceflinger", gSurfaceFlingerPath, sizeof(gSurfaceFlingerPath));
-            allocate_statusbar_surface();
+        if (!g_use_wayland_mode) {
+            // Query background services paths again if they were initially not running
+            if (strlen(gPowerManagerPath) == 0) {
+                resolve_service_path("mobile.powermanager", gPowerManagerPath, sizeof(gPowerManagerPath));
+            }
+            if (strlen(gSurfaceFlingerPath) == 0) {
+                resolve_service_path("mobile.surfaceflinger", gSurfaceFlingerPath, sizeof(gSurfaceFlingerPath));
+                allocate_statusbar_surface();
+            }
         }
         
         // Dynamic redraw loop tick
@@ -387,7 +658,15 @@ int main(int argc, char *argv[]) {
     
     close(server_fd);
     unlink(STATUSBAR_SOCKET);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        gCanvas.pixels = NULL; // prevent double free of g_shm_data
+    }
+#endif
     canvas_free(&gCanvas);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) cleanup_wayland();
+#endif
     i18n_free();
     
     return 0;

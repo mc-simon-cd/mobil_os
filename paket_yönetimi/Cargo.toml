@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "mcpkg-core",
+    "mcpkg-crypto",
+    "mcpkg-sandbox",
+    "mcpkg-pipeline",
+    "mcpkg-cli",
+]
+
+resolver = "2"

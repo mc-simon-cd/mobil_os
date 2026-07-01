@@ -15,9 +15,11 @@
  */
 
 #include "composer.h"
+#include "../wl/wl_compositor.h"
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -158,10 +160,96 @@ static void handle_client(int client_fd) {
 }
 
 int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    bool use_wayland = false;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--wayland") == 0) {
+            use_wayland = true;
+            break;
+        }
+    }
 
-    std::cout << "[INFO] [SURFACEFLINGER] Starting Surfaceflinger Graphics Daemon..." << std::endl;
+    if (use_wayland) {
+        std::cout << "[INFO] [SURFACEFLINGER] Starting Surfaceflinger in Wayland Compositor mode..." << std::endl;
+        if (!wl_compositor_init()) {
+            std::cerr << "[ERR] [SURFACEFLINGER] Failed to initialize Wayland compositor. Exiting." << std::endl;
+            return 1;
+        }
+
+        // Also register with servicemanager and open IPC socket for touch injection
+        register_with_servicemanager();
+        unlink(SURFACEFLINGER_SOCKET);
+        int wl_ipc_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (wl_ipc_fd >= 0) {
+            struct sockaddr_un wl_addr;
+            memset(&wl_addr, 0, sizeof(wl_addr));
+            wl_addr.sun_family = AF_UNIX;
+            strncpy(wl_addr.sun_path, SURFACEFLINGER_SOCKET, sizeof(wl_addr.sun_path) - 1);
+            if (bind(wl_ipc_fd, (struct sockaddr *)&wl_addr, sizeof(wl_addr)) == 0) {
+                chmod(SURFACEFLINGER_SOCKET, 0666);
+                listen(wl_ipc_fd, 8);
+                std::cout << "[INFO] [SURFACEFLINGER] Wayland IPC touch socket: " << SURFACEFLINGER_SOCKET << std::endl;
+
+                // Background thread: accept touch injection IPC requests
+                std::thread ipc_thread([wl_ipc_fd]() {
+                    while (true) {
+                        int cfd = accept(wl_ipc_fd, NULL, NULL);
+                        if (cfd < 0) break;
+
+                        ipc_header_t hdr;
+                        ssize_t rec = read(cfd, &hdr, sizeof(hdr));
+                        if (rec == (ssize_t)sizeof(hdr)) {
+                            parcel_t data;
+                            parcel_init(&data);
+                            if (hdr.data_size > 0) {
+                                char *buf = (char *)malloc(hdr.data_size);
+                                if (buf) {
+                                    size_t rb = 0;
+                                    while (rb < hdr.data_size) {
+                                        ssize_t r = read(cfd, buf + rb, hdr.data_size - rb);
+                                        if (r <= 0) break;
+                                        rb += r;
+                                    }
+                                    parcel_write_raw(&data, buf, hdr.data_size);
+                                    free(buf);
+                                }
+                            }
+
+                            // CMD_SEND_INPUT_EVENT = 4 (Wayland touch injection)
+                            if (hdr.code == 4) {
+                                int32_t ev_type = 0, ev_code = 0, ev_val = 0;
+                                parcel_read_int32(&data, &ev_type);
+                                parcel_read_int32(&data, &ev_code);
+                                parcel_read_int32(&data, &ev_val);
+                                wl_compositor_inject_touch(ev_type, ev_code, ev_val);
+                            }
+
+                            parcel_t reply;
+                            parcel_init(&reply);
+                            parcel_write_int32(&reply, 0);
+                            ipc_header_t rh;
+                            rh.code = 0;
+                            rh.data_size = (uint32_t)reply.size;
+                            write(cfd, &rh, sizeof(rh));
+                            if (reply.size > 0) write(cfd, reply.data, reply.size);
+                            parcel_free(&reply);
+                            parcel_free(&data);
+                        }
+                        close(cfd);
+                    }
+                    close(wl_ipc_fd);
+                });
+                ipc_thread.detach();
+            } else {
+                close(wl_ipc_fd);
+            }
+        }
+
+        wl_compositor_run();
+        wl_compositor_cleanup();
+        return 0;
+    }
+
+    std::cout << "[INFO] [SURFACEFLINGER] Starting Surfaceflinger Graphics Daemon in legacy PPM mode..." << std::endl;
 
     // Registers display path in background
     register_with_servicemanager();

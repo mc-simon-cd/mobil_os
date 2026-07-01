@@ -1,45 +1,66 @@
-# Mobile OS - Installation, Build & Verification Guide
+# Orion OS - Installation, Build & Verification Guide
 
-This guide describes how to set up the development environment, compile the Mobile OS, run the multi-language applications, and verify the builds using integration test suites.
+This guide describes how to set up the development environment, compile the Orion OS, run the multi-language applications, and verify the builds using integration test suites.
 
 ---
 
 ## 📋 Development Prerequisites
 
-Before building Mobile OS, install the necessary host packages:
+Before building Orion OS, install the necessary host packages. The recommended way is the automated pipeline driven by [`deps/deps.yml`](deps/deps.yml):
 
-### 1. Build Tools & Compilers
-* **C/C++ Compilers**: `gcc` and `g++` (for local host builds)
-* **Rust Toolchain**: `rustc` and `cargo` (minimum edition 2021)
-* **Make Utility**: GNU `make`
+```bash
+# Verify environment
+./scripts/update-deps.sh --check
 
-On Ubuntu/Debian:
+# Install missing packages (apt on Debian/Ubuntu, pacman on Arch)
+./scripts/update-deps.sh --install
+
+# Full pipeline: install + cargo update + kernel + build + initramfs
+./scripts/update-deps.sh --all
+```
+
+Equivalent Makefile targets:
+
+```bash
+make check-deps
+make update-deps
+```
+
+### What `deps/deps.yml` manages
+
+| Section | Purpose |
+|:---|:---|
+| `host.apt` / `host.pacman` | OS package lists (auto-detected) |
+| `required_binaries` | Tools that must exist on `PATH` |
+| `rust.targets` | `rustup target add aarch64-unknown-linux-gnu` |
+| `rust.workspaces` | Crates receiving `cargo update` |
+| `kernel` | Triggers `scripts/download-kernel.sh` |
+| `build.scripts` | Post-update `build.sh` + `make-rootfs.sh` |
+
+### Manual install (Ubuntu/Debian)
+
 ```bash
 sudo apt update
-sudo apt install build-essential rustc cargo make -y
-```
-
-### 2. Target Cross-Compilation Toolchain
-To compile for the target `aarch64` (ARM64 QEMU emulator board):
-```bash
-sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu -y
-```
-Also add the target architecture in Rust:
-```bash
+sudo apt install build-essential rustc cargo make \
+  gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+  qemu-system-arm curl wget xz-utils python3 nodejs -y
 rustup target add aarch64-unknown-linux-gnu
 ```
 
-### 3. Emulation & Runtimes
-* **QEMU Emulator**: `qemu-system-aarch64` (to boot the system image)
-* **Python**: `python3` (for running the Python `sys_reporter` app)
-* **Node.js**: `node` (for running the JavaScript `sys_monitor` app)
-* **Web Fetch Tools**: `curl` (for testing API endpoints)
+### Manual install (Arch Linux)
+
+```bash
+sudo pacman -S --needed base-devel rust cargo make \
+  aarch64-linux-gnu-gcc qemu-system-aarch64 \
+  curl wget xz python nodejs
+rustup target add aarch64-unknown-linux-gnu
+```
 
 ---
 
-## 🏗️ Building Mobile OS
+## 🏗️ Building Orion OS
 
-You can build Mobile OS either for the local host architecture (used for fast testing and continuous integration) or cross-compile it for the target `aarch64` mobile board.
+You can build Orion OS either for the local host architecture (used for fast testing and continuous integration) or cross-compile it for the target `aarch64` mobile board.
 
 ### 1. Fast Host Compilation
 To build all daemons and libraries for the local machine:
@@ -54,46 +75,81 @@ To build and package the complete binary tree:
 make clean
 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ ./scripts/build.sh
 ```
-This builds all C/C++/Rust libraries and daemons, prepares the rootfs hierarchy inside `out/rootfs/`, and configures automatic daemon boot settings inside `out/rootfs/etc/inittab`.
+
+This builds all C/C++/Rust libraries and daemons and prepares the rootfs hierarchy inside `out/rootfs/`.
+
+### 3. Initramfs Boot Image (QEMU)
+```bash
+./scripts/download-kernel.sh   # out/kernel/Image + out/e1000.ko
+./scripts/make-rootfs.sh       # out/initramfs.cpio.gz
+./scripts/qemu-run.sh --headless
+```
+
+The initramfs includes static `/init`, all `/system/bin` services, `/system/apps`, locale assets, and the `e1000` network module.
 
 ---
 
 ## 🧪 Verification & Testing
 
-Three integration test suites are available under `tests/integration/` to verify system features on the host.
+Integration test suites under `tests/integration/` verify system features on the host.
 
 ### 1. API Gateway Integration Tests
-Verifies REST endpoints, power manager states, and CORS headers:
 ```bash
 ./tests/integration/test_api_host.sh
 ```
 
 ### 2. App Runner & Multi-Language Runtime Tests
-Verifies manifest-based execution of Python, JS (Node.js), and Web apps:
 ```bash
 ./tests/integration/test_apprunner_host.sh
 ```
 
 ### 3. UI Shell Statusbar Notification Tests
-Verifies local time drawing, query to power daemon, and notification listener IPC:
 ```bash
 ./tests/integration/test_statusbar_host.sh
 ```
 
+### 4. Display Preview API (Milestone 15)
+```bash
+./tests/integration/test_display_preview.sh
+```
+
+### 5. Rootfs ext4 Disk Image (Milestone 16)
+```bash
+./tests/integration/test_rootfs_disk.sh
+```
+
+**Disk boot in QEMU** (initramfs yerine virtio-blk):
+```bash
+./scripts/make-rootfs.sh          # out/rootfs.ext4 + initramfs.cpio.gz
+./scripts/qemu-run.sh --disk --headless
+```
+
 ---
+
 
 ## 📱 Running Runtimes & Control Center Dashboard
 
-To test the multi-language capabilities and Web Control Center dashboard locally on the host:
+`apprunner` is **not** a standalone daemon — it requires an app directory with `manifest.json`:
 
-### 1. Start System Daemons in Background
-Compile for host and run the backend nervous system:
 ```bash
-# Compile host binaries
+apprunner <app_directory_path>
+```
+
+At QEMU boot, `init.rc` starts Control Center automatically:
+
+```
+service apprunner /system/bin/apprunner
+    args /system/apps/control_center
+    respawn
+```
+
+### Host-side manual launch
+
+Start backend daemons, then run apps via `apprunner`:
+
+```bash
 make CC=gcc CXX=g++
 ./scripts/build.sh
-
-# Run daemons (clean up old sockets first)
 rm -f /tmp/*.sock
 ./out/rootfs/system/bin/servicemanager &
 ./out/rootfs/system/bin/powermanager &
@@ -103,39 +159,34 @@ rm -f /tmp/*.sock
 PORT=8085 ./out/rootfs/system/bin/apigateway &
 ```
 
-### 2. Run Applications via App Runner
-Launch the modular showcase apps:
-* **Python Reporter** (outputs localized battery stats):
+* **Python Reporter:**
   ```bash
   API_PORT=8085 LANG=tr ./out/rootfs/system/bin/apprunner ./out/rootfs/system/apps/sys_reporter
   ```
-* **JavaScript Monitor** (polls status periodically):
+* **JavaScript Monitor:**
   ```bash
   API_PORT=8085 ./out/rootfs/system/bin/apprunner ./out/rootfs/system/apps/sys_monitor
   ```
-* **Control Center Dashboard** (runs web server to host dashboard):
+* **Control Center Dashboard:**
   ```bash
   APP_PORT=8090 ./out/rootfs/system/bin/apprunner ./out/rootfs/system/apps/control_center
   ```
-  Open `http://localhost:8090` in your host browser to view the premium glassmorphism Control Center. You can click on buttons to change power modes, inject key events, and read logs in real time.
+  Open `http://localhost:8090` in your browser.
 
 ---
 
 ## 🛠️ Repository Directory Structure
 
 ```
-├── apps/               # Built-in system applications (launcher)
+├── apps/               # Built-in system applications (launcher, settings, dialer)
 ├── board/              # QEMU board configs & defconfigs
-├── core/               # Early boot systems (init, mount, properties)
-├── libs/               # Shared system libraries:
-│   ├── libipc/         # C-based Parcel/Binder IPC socket library
-│   ├── libipc-rs/      # Wire-compatible Rust IPC serialization library
-│   ├── libgraphics/    # 2D drawing primitives & canvas engine
-│   └── libi18n/        # Multi-language localization C library
-├── out/                # Created during build (rootfs, targets)
-├── rootfs/             # Root filesystem config templates & locale assets
-├── scripts/            # Compilation pipelines and dev scripts
-├── services/           # System daemons (servicemanager, powermanager, etc.)
-├── ui/                 # UI Shell components (statusbar & notifications)
-└── tests/              # Integration and unit test suites
+├── core/               # Early boot systems (init, mount, properties, init.rc)
+├── deps/               # deps.yml — dependency & library update manifest
+├── libs/               # Shared system libraries (libipc, libipc-rs, libgraphics, libi18n)
+├── out/                # Build output (rootfs, kernel, initramfs, e1000.ko)
+├── rootfs/             # Root filesystem templates, apps, locale assets
+├── scripts/            # build.sh, make-rootfs.sh, update-deps.sh, qemu-run.sh
+├── services/           # System daemons (servicemanager, powermanager, apprunner, …)
+├── ui/                 # UI shell (statusbar)
+└── tests/              # Unit and integration test suites
 ```

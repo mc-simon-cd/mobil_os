@@ -1,0 +1,96 @@
+# Orion OS — Dependency & Library Update Manifest
+# Consumed by: scripts/update-deps.sh, scripts/check-deps.sh
+
+meta:
+  name: orion-os
+  version: "1.0"
+
+# Host system packages
+host:
+  manager: auto
+  update_before_install: true
+  apt:
+    packages:
+      - build-essential
+      - make
+      - gcc-aarch64-linux-gnu
+      - g++-aarch64-linux-gnu
+      - qemu-system-arm
+      - curl
+      - wget
+      - xz-utils
+      - binutils
+      - file
+      - e2fsprogs
+      - python3
+      - nodejs
+      - rustc
+      - cargo
+      - libwlroots-dev
+      - wayland-protocols
+  pacman:
+    packages:
+      - base-devel
+      - make
+      - aarch64-linux-gnu-gcc
+      - aarch64-linux-gnu-gdb
+      - qemu-system-aarch64
+      - curl
+      - wget
+      - xz
+      - binutils
+      - file
+      - e2fsprogs
+      - python
+      - nodejs
+      - rust
+      - cargo
+      - wlroots0.18
+      - wayland-protocols
+
+# Binaries that must exist on PATH (build + QEMU pipeline)
+required_binaries:
+  - make
+  - aarch64-linux-gnu-gcc
+  - aarch64-linux-gnu-g++
+  - qemu-system-aarch64
+  - curl
+  - cargo
+  - rustc
+
+# Useful but non-blocking tools
+optional_binaries:
+  - python3
+  - node
+  - xz
+  - wget
+  - ar
+  - mkfs.ext4
+  - debugfs
+  - wayland-info
+
+# Rust cross-compilation targets (applied via rustup when available)
+rust:
+  targets:
+    - aarch64-unknown-linux-gnu
+  workspaces:
+    - libs/libipc-rs
+    - services/apprunner
+    - services/apigateway
+    - services/powermanager
+    - services/inputflinger
+    - paket_yönetimi
+
+# Prebuilt kernel + network module download
+kernel:
+  enabled: true
+  script: scripts/download-kernel.sh
+
+# Post-update build pipeline (run by update-deps.sh --all)
+build:
+  cross_compile: true
+  cc: aarch64-linux-gnu-gcc
+  cxx: aarch64-linux-gnu-g++
+  scripts:
+    build: scripts/build.sh
+    rootfs: scripts/make-rootfs.sh

@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
     }
 
     fprintf(stdout, "\n=============================================\n");
-    fprintf(stdout, "📱   Booting Mobile OS Init Engine (PID 1)\n");
+    fprintf(stdout, "📱   Booting Orion OS Init Engine (PID 1)\n");
     fprintf(stdout, "=============================================\n\n");
 
     // Initialize physical virtual filesystems
@@ -196,6 +196,26 @@ int main(int argc, char *argv[]) {
 
     // Initialize state database
     property_init();
+
+    // Detect Wayland boot mode from kernel command line
+    {
+        FILE *cmdline_f = fopen("/proc/cmdline", "r");
+        if (cmdline_f) {
+            char cmdline_buf[512] = "";
+            if (fgets(cmdline_buf, sizeof(cmdline_buf), cmdline_f) != NULL) {
+                if (strstr(cmdline_buf, "wayland=1") != NULL) {
+                    setenv("WAYLAND_ENABLED", "1", 1);
+                    property_set("sys.graphics.backend", "wayland");
+                    LOG_INFO("Kernel cmdline: wayland=1 detected. Enabling Wayland compositor mode.");
+                } else {
+                    setenv("WAYLAND_ENABLED", "0", 1);
+                    property_set("sys.graphics.backend", "ppm");
+                    LOG_INFO("Kernel cmdline: No wayland=1. Using legacy PPM compositor mode.");
+                }
+            }
+            fclose(cmdline_f);
+        }
+    }
 
     // Register child death signals
     struct sigaction sa;

@@ -32,6 +32,12 @@
 #define LOG_WARN(fmt, ...)  fprintf(stderr, "[WARN] [" LOG_TAG "] " fmt "\n", ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERR]  [" LOG_TAG "] " fmt "\n", ##__VA_ARGS__)
 
+typedef enum {
+    SVC_CLASS_DEFAULT = 0,
+    SVC_CLASS_CORE,
+    SVC_CLASS_MAIN
+} service_class_t;
+
 // Service structure representing daemons to launch/manage
 typedef struct {
     char name[64];
@@ -41,6 +47,7 @@ typedef struct {
     pid_t pid;
     int respawn;      // Boolean flag to auto-restart on exit
     int active;       // Status track flag
+    service_class_t service_class;
 } service_t;
 
 // System dynamic properties

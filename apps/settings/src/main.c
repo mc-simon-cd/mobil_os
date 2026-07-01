@@ -16,6 +16,13 @@
 
 #define _GNU_SOURCE
 
+#ifdef TRACK_WAYLAND
+#include <wayland-client.h>
+#include "xdg-shell-protocol.h"
+#include <sys/mman.h>
+#include <fcntl.h>
+#endif
+
 #include "ipc/binder.h"
 #include "ipc/parcel.h"
 #include "graphics.h"
@@ -31,6 +38,162 @@
 static char gPowerManagerPath[128] = "";
 static char gSurfaceFlingerPath[128] = "";
 static char gStatusbarPath[128] = "";
+static bool g_use_wayland_mode = false;
+
+#ifdef TRACK_WAYLAND
+static struct wl_display *g_wl_display = NULL;
+static struct wl_registry *g_wl_registry = NULL;
+static struct wl_compositor *g_wl_compositor = NULL;
+static struct wl_shm *g_wl_shm = NULL;
+static struct xdg_wm_base *g_xdg_wm_base = NULL;
+static struct wl_surface *g_wl_surface = NULL;
+static struct xdg_surface *g_xdg_surface = NULL;
+static struct xdg_toplevel *g_xdg_toplevel = NULL;
+static struct wl_buffer *g_wl_buffer = NULL;
+static uint32_t *g_shm_data = NULL;
+static int g_shm_fd = -1;
+static size_t g_shm_size = 0;
+
+static int create_shm_file(size_t size) {
+    int fd = -1;
+#ifdef __linux__
+    fd = memfd_create("orion-shm", MFD_CLOEXEC);
+    if (fd >= 0) {
+        if (ftruncate(fd, size) < 0) {
+            close(fd);
+            return -1;
+        }
+        return fd;
+    }
+#endif
+    char name[] = "/tmp/orion-shm-XXXXXX";
+    fd = mkstemp(name);
+    if (fd < 0) return -1;
+    unlink(name);
+    if (ftruncate(fd, size) < 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
+    (void)data;
+    xdg_wm_base_pong(xdg_wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener xdg_wm_base_listener = {
+    .ping = xdg_wm_base_ping,
+};
+
+static void registry_global(void *data, struct wl_registry *registry,
+                            uint32_t name, const char *interface, uint32_t version) {
+    (void)data;
+    (void)version;
+    if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        g_wl_compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+    } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        g_wl_shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+    } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+        g_xdg_wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+        xdg_wm_base_add_listener(g_xdg_wm_base, &xdg_wm_base_listener, NULL);
+    }
+}
+
+static void registry_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
+    (void)data;
+    (void)registry;
+    (void)name;
+}
+
+static const struct wl_registry_listener registry_listener = {
+    .global = registry_global,
+    .global_remove = registry_global_remove,
+};
+
+static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
+    (void)data;
+    xdg_surface_ack_configure(xdg_surface, serial);
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+    .configure = xdg_surface_configure,
+};
+
+static void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
+                                   int32_t width, int32_t height, struct wl_array *states) {
+    (void)data;
+    (void)xdg_toplevel;
+    (void)width;
+    (void)height;
+    (void)states;
+}
+
+static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
+    (void)data;
+    (void)xdg_toplevel;
+}
+
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+    .configure = xdg_toplevel_configure,
+    .close = xdg_toplevel_close,
+};
+
+static int init_wayland(void) {
+    g_wl_display = wl_display_connect(NULL);
+    if (!g_wl_display) {
+        fprintf(stderr, "[ERR] [SETTINGS] Failed to connect to Wayland display\n");
+        return -1;
+    }
+
+    g_wl_registry = wl_display_get_registry(g_wl_display);
+    wl_registry_add_listener(g_wl_registry, &registry_listener, NULL);
+    wl_display_roundtrip(g_wl_display);
+
+    if (!g_wl_compositor || !g_wl_shm || !g_xdg_wm_base) {
+        fprintf(stderr, "[ERR] [SETTINGS] Missing required Wayland globals\n");
+        return -1;
+    }
+
+    g_wl_surface = wl_compositor_create_surface(g_wl_compositor);
+    g_xdg_surface = xdg_wm_base_get_xdg_surface(g_xdg_wm_base, g_wl_surface);
+    xdg_surface_add_listener(g_xdg_surface, &xdg_surface_listener, NULL);
+
+    g_xdg_toplevel = xdg_surface_get_toplevel(g_xdg_surface);
+    xdg_toplevel_add_listener(g_xdg_toplevel, &xdg_toplevel_listener, NULL);
+    xdg_toplevel_set_title(g_xdg_toplevel, "Orion Settings");
+
+    wl_surface_commit(g_wl_surface);
+    wl_display_roundtrip(g_wl_display);
+
+    g_shm_size = 1080 * 2200 * 4;
+    g_shm_fd = create_shm_file(g_shm_size);
+    if (g_shm_fd < 0) return -1;
+
+    g_shm_data = mmap(NULL, g_shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, g_shm_fd, 0);
+    if (g_shm_data == MAP_FAILED) return -1;
+
+    struct wl_shm_pool *pool = wl_shm_create_pool(g_wl_shm, g_shm_fd, g_shm_size);
+    g_wl_buffer = wl_shm_pool_create_buffer(pool, 0, 1080, 2200, 1080 * 4, WL_SHM_FORMAT_XRGB8888);
+    wl_shm_pool_destroy(pool);
+
+    return 0;
+}
+
+static void cleanup_wayland(void) {
+    if (g_wl_buffer) wl_buffer_destroy(g_wl_buffer);
+    if (g_shm_data && g_shm_data != MAP_FAILED) munmap(g_shm_data, g_shm_size);
+    if (g_shm_fd >= 0) close(g_shm_fd);
+    if (g_xdg_toplevel) xdg_toplevel_destroy(g_xdg_toplevel);
+    if (g_xdg_surface) xdg_surface_destroy(g_xdg_surface);
+    if (g_wl_surface) wl_surface_destroy(g_wl_surface);
+    if (g_xdg_wm_base) xdg_wm_base_destroy(g_xdg_wm_base);
+    if (g_wl_shm) wl_shm_destroy(g_wl_shm);
+    if (g_wl_compositor) wl_compositor_destroy(g_wl_compositor);
+    if (g_wl_registry) wl_registry_destroy(g_wl_registry);
+    if (g_wl_display) wl_display_disconnect(g_wl_display);
+}
+#endif
 
 static int resolve_service_path(const char *service_name, char *out_path, size_t max_len) {
     int fd = ipc_connect(SERVICEMANAGER_SOCKET);
@@ -151,18 +314,36 @@ int main(int argc, char *argv[]) {
     resolve_service_path("mobile.surfaceflinger", gSurfaceFlingerPath, sizeof(gSurfaceFlingerPath));
     resolve_service_path("mobile.statusbar", gStatusbarPath, sizeof(gStatusbarPath));
     
-    // Allocate surface layer
-    int32_t sid = allocate_surface(1080, 2200);
-    if (sid >= 0) {
-        printf("[INFO] [SETTINGS] Allocated graphics surface ID %d on surfaceflinger.\n", sid);
-    }
-    
     // 2. Parse arguments (e.g. settings --mode powersave)
     const char *set_mode = NULL;
+    bool request_wayland = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             set_mode = argv[i + 1];
-            break;
+        }
+        if (strcmp(argv[i], "--wayland") == 0) {
+            request_wayland = true;
+        }
+    }
+    
+#ifdef TRACK_WAYLAND
+    if (request_wayland) {
+        printf("[INFO] [SETTINGS] Initializing Wayland Client...\n");
+        if (init_wayland() == 0) {
+            g_use_wayland_mode = true;
+            printf("[INFO] [SETTINGS] Running in Wayland mode.\n");
+        } else {
+            fprintf(stderr, "[WARN] [SETTINGS] Failed to initialize Wayland client. Falling back to PPM.\n");
+        }
+    }
+#endif
+
+    int32_t sid = -1;
+    if (!g_use_wayland_mode) {
+        // Allocate surface layer
+        sid = allocate_surface(1080, 2200);
+        if (sid >= 0) {
+            printf("[INFO] [SETTINGS] Allocated graphics surface ID %d on surfaceflinger.\n", sid);
         }
     }
     
@@ -224,7 +405,20 @@ int main(int argc, char *argv[]) {
     
     // 5. Draw Visual Settings Layout (1080 x 2200)
     canvas_t canvas;
-    canvas_init(&canvas, 1080, 2200);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        if (canvas_init_external(&canvas, 1080, 2200, g_shm_data) != 0) {
+            fprintf(stderr, "[ERR]  [SETTINGS] Failed to initialize external canvas.\n");
+            return 1;
+        }
+    } else {
+#endif
+        if (canvas_init(&canvas, 1080, 2200) != 0) {
+            return 1;
+        }
+#ifdef TRACK_WAYLAND
+    }
+#endif
     canvas_clear(&canvas, 0x0E0B16FF); // Deep purple dark theme
     
     // Draw top heading section
@@ -298,27 +492,48 @@ int main(int argc, char *argv[]) {
     canvas_draw_rect(&canvas, 50, 1400, 980, 450, 0x33254FFF, false);
     canvas_draw_text(&canvas, 80, 1450, "ℹ️ System Info", 0xF59E0BFF);
     
-    canvas_draw_text(&canvas, 100, 1530, "OS: Mobile OS v1.0 Alpha (ARM64)", 0xFFFFFFFF);
+    canvas_draw_text(&canvas, 100, 1530, "OS: Orion OS v1.0 Alpha (ARM64)", 0xFFFFFFFF);
     char lang_str[128];
     snprintf(lang_str, sizeof(lang_str), "Active Language: %s", lang_code);
     canvas_draw_text(&canvas, 100, 1610, lang_str, 0xFFFFFFFF);
     canvas_draw_text(&canvas, 100, 1690, "Kernel: Linux 5.10-QEMU", 0x9F9BA9FF);
     
     // 6. Save image
-    mkdir("out", 0777);
-    char out_path[128] = "out/settings_display.ppm";
-    if (sid >= 0) {
-        snprintf(out_path, sizeof(out_path), "out/surface_%d.ppm", sid);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        if (g_wl_surface && g_wl_buffer) {
+            wl_surface_attach(g_wl_surface, g_wl_buffer, 0, 0);
+            wl_surface_damage(g_wl_surface, 0, 0, 1080, 2200);
+            wl_surface_commit(g_wl_surface);
+            wl_display_roundtrip(g_wl_display);
+        }
+    } else {
+#endif
+        mkdir("out", 0777);
+        char out_path[128] = "out/settings_display.ppm";
+        if (sid >= 0) {
+            snprintf(out_path, sizeof(out_path), "out/surface_%d.ppm", sid);
+        }
+        canvas_save_ppm(&canvas, out_path);
+        canvas_save_ppm(&canvas, "out/settings_display.ppm"); // legacy backup
+        
+        // Trigger composition
+        trigger_composite_tick();
+        printf("[INFO] [SETTINGS] Frame rendering complete: %s\n", out_path);
+#ifdef TRACK_WAYLAND
     }
-    canvas_save_ppm(&canvas, out_path);
-    canvas_save_ppm(&canvas, "out/settings_display.ppm"); // legacy backup
+#endif
     
-    // Trigger composition
-    trigger_composite_tick();
-    
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) {
+        canvas.pixels = NULL; // prevent double free of g_shm_data
+    }
+#endif
     canvas_free(&canvas);
+#ifdef TRACK_WAYLAND
+    if (g_use_wayland_mode) cleanup_wayland();
+#endif
     i18n_free();
     
-    printf("[INFO] [SETTINGS] Frame rendering complete: %s\n", out_path);
     return 0;
 }

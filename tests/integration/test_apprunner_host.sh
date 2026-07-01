@@ -48,7 +48,7 @@ make -C "${REPO_DIR}/services/apprunner" CC=gcc AR=ar
 
 # Re-run build.sh to package everything to out/rootfs/system/apps
 echo "📂 Packaging rootfs..."
-"${REPO_DIR}/scripts/build.sh"
+CC=gcc CXX=g++ AR=ar "${REPO_DIR}/scripts/build.sh"
 
 echo "🧹 Cleaning up old sockets..."
 rm -f /tmp/servicemanager.sock
@@ -151,7 +151,7 @@ sleep 0.8
 
 # Fetch index.html
 HTML_RESP=$(curl -s http://localhost:8090/index.html)
-if [[ "$HTML_RESP" != *"Mobile OS - Control Center"* || "$HTML_RESP" != *"app.js"* ]]; then
+if [[ "$HTML_RESP" != *"Orion OS - Control Center"* || "$HTML_RESP" != *"app.js"* ]]; then
     echo "❌ Test 4 Failed: HTML Response from served Web App is missing or incorrect!"
     exit 1
 fi
