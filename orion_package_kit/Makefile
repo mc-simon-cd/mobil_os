@@ -1,4 +1,4 @@
-# Sub-Makefile for mcpkg — Orion OS package manager (paket_yönetimi/Makefile)
+# Sub-Makefile for mcpkg — Orion OS package manager (orion_package_kit/Makefile)
 
 OUT_DIR := ../out/rootfs/system
 TARGET := $(OUT_DIR)/bin/opk

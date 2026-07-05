@@ -79,7 +79,7 @@ rust:
     - services/apigateway
     - services/powermanager
     - services/inputflinger
-    - paket_yönetimi
+    - orion_package_kit
 
 # Prebuilt kernel + network module download
 kernel:

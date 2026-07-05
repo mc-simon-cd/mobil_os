@@ -5,7 +5,7 @@ export CXX := aarch64-linux-gnu-g++
 export AR := aarch64-linux-gnu-ar
 export LDFLAGS := -static
 
-SUBDIRS := libs core services ui apps paket_yönetimi
+SUBDIRS := libs core services ui apps orion_package_kit
 
 
 .PHONY: all clean update-deps check-deps $(SUBDIRS)

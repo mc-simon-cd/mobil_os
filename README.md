@@ -62,7 +62,7 @@ The project code is organized logically:
 * **`ui/`**: Core window management compositor protocols and the visual system shell (statusbar, notifications, dock).
 * **`apps/`**: System applications that come pre-bundled with the OS (Dialer, Messaging, File Manager).
 * **`deps/`**: Central dependency manifest (`deps.yml`) consumed by automated update scripts.
-* **`paket_yönetimi/`**: `opk` — Ed25519-signed application package manager (install, verify, sandbox launch).
+* **`orion_package_kit/`**: `opk` — Ed25519-signed application package manager (install, verify, sandbox launch).
 * **`libs/`**: Internal libraries providing UI components (`libui`), serialization (`libipc`), and drawing tools (`libgraphics`).
 * **`tools/`**: Host developer scripts, log listeners (`logcat`), packaging mechanisms, and emulator launcher.
 * **`tests/`**: Unit test suits and boot integration checklists.
