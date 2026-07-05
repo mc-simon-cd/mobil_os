@@ -24,10 +24,12 @@ static std::vector<OrionSurface*> g_active_surfaces;
 
 static void composite_wayland_surfaces();
 
+static bool g_needs_composite = false;
+
 static void handle_xdg_surface_commit(struct wl_listener *listener, void *data) {
     (void)listener;
     (void)data;
-    composite_wayland_surfaces();
+    g_needs_composite = true;
 }
 
 static void handle_xdg_surface_destroy(struct wl_listener *listener, void *data) {
@@ -44,7 +46,7 @@ static void handle_xdg_surface_destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&os->destroy_listener.link);
     delete os;
 
-    composite_wayland_surfaces();
+    g_needs_composite = true;
 }
 
 struct WaylandCompositorState {
@@ -59,6 +61,7 @@ struct WaylandCompositorState {
     struct wlr_screencopy_manager_v1 *screencopy_mgr = nullptr;
     struct wlr_seat *seat = nullptr;
     struct wlr_output *output = nullptr;
+    struct wl_event_source *frame_timer = nullptr;
 };
 
 static WaylandCompositorState g_wl_state;
@@ -68,6 +71,19 @@ static int handle_signal(int sig, void *data) {
     std::cout << "[INFO] [WAYLAND] Signal received: " << sig << ", terminating display..." << std::endl;
     if (g_wl_state.display) {
         wl_display_terminate(g_wl_state.display);
+    }
+    return 0;
+}
+
+// 60 FPS (16ms) Frame Pacing Timer Callback
+static int handle_frame_timer(void *data) {
+    (void)data;
+    if (g_needs_composite) {
+        composite_wayland_surfaces();
+        g_needs_composite = false;
+    }
+    if (g_wl_state.frame_timer) {
+        wl_event_source_timer_update(g_wl_state.frame_timer, 16);
     }
     return 0;
 }
@@ -146,6 +162,15 @@ static void composite_wayland_surfaces() {
         out << "P6\n" << master_w << " " << master_h << "\n255\n";
         out.write(reinterpret_cast<const char*>(master_rgb.data()), master_rgb.size());
         std::cout << "[INFO] [WAYLAND] Composited and saved frame to out/display_composited.ppm" << std::endl;
+    }
+
+    // Send frame done event to all mapped surfaces to trigger the next frame rendering
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    for (auto *os : g_active_surfaces) {
+        if (os->toplevel && os->toplevel->base && os->toplevel->base->surface && os->toplevel->base->surface->mapped) {
+            wlr_surface_send_frame_done(os->toplevel->base->surface, &now);
+        }
     }
 }
 
@@ -318,6 +343,13 @@ bool wl_compositor_init() {
         return false;
     }
 
+    // Set up frame pacing/vsync timer (16ms / 60 Hz)
+    g_wl_state.frame_timer = wl_event_loop_add_timer(g_wl_state.event_loop, handle_frame_timer, nullptr);
+    if (g_wl_state.frame_timer) {
+        wl_event_source_timer_update(g_wl_state.frame_timer, 16);
+        std::cout << "[INFO] [WAYLAND] Frame pacing (VSync) timer registered." << std::endl;
+    }
+
     return true;
 }
 
@@ -337,6 +369,10 @@ void wl_compositor_cleanup() {
     }
     g_active_surfaces.clear();
 
+    if (g_wl_state.frame_timer) {
+        wl_event_source_remove(g_wl_state.frame_timer);
+        g_wl_state.frame_timer = nullptr;
+    }
     if (g_wl_state.seat) {
         wlr_seat_destroy(g_wl_state.seat);
         g_wl_state.seat = nullptr;
@@ -432,6 +468,10 @@ void wl_compositor_inject_touch(int type, int code, int value) {
     }
 }
 
+void wl_compositor_force_composite() {
+    composite_wayland_surfaces();
+}
+
 #else
 
 bool wl_compositor_init() {
@@ -442,5 +482,6 @@ bool wl_compositor_init() {
 void wl_compositor_run() {}
 void wl_compositor_cleanup() {}
 void wl_compositor_inject_touch(int /*type*/, int /*code*/, int /*value*/) {}
+void wl_compositor_force_composite() {}
 
 #endif

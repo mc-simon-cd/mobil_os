@@ -214,6 +214,11 @@ int main(int argc, char *argv[]) {
                                 }
                             }
 
+                            // CMD_COMPOSITE = 2 (Force composition)
+                            if (hdr.code == 2) {
+                                wl_compositor_force_composite();
+                            }
+
                             // CMD_SEND_INPUT_EVENT = 4 (Wayland touch injection)
                             if (hdr.code == 4) {
                                 int32_t ev_type = 0, ev_code = 0, ev_val = 0;

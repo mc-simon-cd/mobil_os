@@ -101,7 +101,7 @@ sleep 0.2
 
 # Launch surfaceflinger in Wayland mode in background
 echo "🚀 Spawning surfaceflinger in Wayland mode..."
-"$SF_BIN" --wayland > "$SF_LOG" 2>&1 &
+(cd "${REPO_DIR}" && "$SF_BIN" --wayland > "$SF_LOG" 2>&1) &
 SF_PID=$!
 
 # Wait for Wayland socket

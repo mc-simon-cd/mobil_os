@@ -29,3 +29,6 @@ void wl_compositor_cleanup();
 // Inject a touch input event into the Wayland compositor (seat).
 // type: EV_ABS(3) or EV_KEY(1), code: ABS_X/ABS_Y/BTN_TOUCH, value: coordinate or 0/1.
 void wl_compositor_inject_touch(int type, int code, int value);
+
+// Force composition immediately (used by apigateway / IPC CMD_COMPOSITE).
+void wl_compositor_force_composite();
