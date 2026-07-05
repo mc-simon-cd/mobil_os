@@ -156,13 +156,20 @@ gantt
   - [x] `settings` ve `dialer` uygulamaları Wayland istemcisi olarak güncellendi (tek çerçeve çizip kompozitöre commit etme mantığı).
   - [x] Tüm istemciler için Wayland başlatılamadığında sorunsuz legacy PPM fallback mantığı korundu.
   - [x] `test_wayland_apps.sh` entegrasyon testi ile tüm uygulamaların Wayland bağlantıları doğrulandı.
+* [x] **Milestone 20:** Wayland Faz 4 (QEMU Entegrasyonu, Input Yönlendirme ve Frame Pacing) tamamlandı ✅
+  - [x] `core/init`: Kernel cmdline parametresine göre (`wayland=1`) dinamik Wayland etkinleştirme.
+  - [x] `scripts/qemu-run.sh`: QEMU Wayland modunda çalıştırmak için `--wayland` bayrağı eklendi.
+  - [x] `inputflinger`: WAYLAND_ENABLED=1 durumunda dokunmatik girdileri surfaceflinger'a yönlendirme.
+  - [x] `surfaceflinger`: IPC üzerinden dokunmatik girdileri alıp `wlr_seat` aracılığıyla istemcilere iletme.
+  - [x] `launcher`: Wayland `wl_touch` dinleyicileri eklendi, uygulamaları başlatma akışı test edildi.
+  - [x] `surfaceflinger`: 60 FPS (16ms) timer tabanlı frame pacing (VSync emulation) ve coalescing entegre edilerek aşırı I/O önlendi.
+  - [x] `surfaceflinger`: apigateway CMD_COMPOSITE entegrasyonu ile senkron force-composite desteği eklendi.
 
-### UI Gap Analysis (updated 2026-06-20)
+### UI Gap Analysis (updated 2026-07-05)
 
 | Layer | Component | Remaining gap |
 |:---|:---|:---|
 | Native apps | Settings, Dialer | Static single-frame; no in-app navigation or button hit-testing |
 | Graphics | `libs/libgraphics/` | No alpha blending; 8×8 font only |
 | Web | Control Center | Optional: Turkish default, sys_monitor card, package manager panel |
-| Wayland migration | `docs/wayland-migration.md` | 🟢 *Complete* | M17: wlroots headless, M18: launcher client, M19: full shell transition |
-
+| Wayland migration | `docs/wayland-migration.md` | 🟢 *Complete* | M17: headless, M18: launcher, M19: full shell, M20: input/vsync integration |

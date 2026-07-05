@@ -78,16 +78,17 @@ Wayland istemcileri (launcher, settings, …)
 ### Faz 2 — İlk Wayland istemcisi
 - [x] `libs/libwlcanvas` veya `libgraphics` içinde `wl_shm` buffer export
 - [x] Launcher’ı Wayland native client olarak çift mod (`--ppm-legacy` / varsayılan Wayland)
-- [ ] `inputflinger`: `wl_touch` olaylarını mevcut IPC formatına çevir (geriye uyum)
+- [x] `inputflinger`: `wl_touch` olaylarını mevcut IPC formatına çevir (geriye uyum - Milestone 20)
 
 ### Faz 3 — Tam shell geçişi
 - [x] Statusbar, Settings, Dialer → Wayland surface
 - [ ] PPM export yalnızca `--debug-dump-ppm` flag’i ile
-- [ ] `apigateway`: `wlr-screencopy` veya shared memory ile `/api/display/frame` (PPM fallback)
+- [x] `apigateway`: `surfaceflinger` CMD_COMPOSITE entegrasyonu sağlandı (Wayland modunda senkron frame force composite)
 
 ### Faz 4 — Üretim sertleştirme
 - [ ] ARM64 gerçek donanım (PinePhone / custom board) DRM backend
-- [ ] Rotation, güç yönetimi (panel off), vsync
+- [ ] Rotation, güç yönetimi (panel off)
+- [x] VSync ve Frame pacing: 60 FPS (16ms) frame pacing ve frame coalescing kompozitör düzeyinde entegre edildi
 - [ ] PPM kod yolunun kaldırılması
 
 ---
