@@ -55,3 +55,37 @@ impl ChecksumListParser {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs;
+
+    #[test]
+    fn test_checksum_list_parser() {
+        let content = r#"
+# Checksums list
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  manifest.toml
+ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  sandbox.policy
+"#;
+        let entries = ChecksumListParser::parse(content);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, "manifest.toml");
+        assert_eq!(entries[1].path, "sandbox.policy");
+    }
+
+    #[test]
+    fn test_calculate_sha256_and_verify() {
+        let tmp = tempdir().unwrap();
+        let file_path = tmp.path().join("test.txt");
+        fs::write(&file_path, "Hello Orion!").unwrap();
+
+        let hash = ChecksumVerifier::calculate_sha256(&file_path).unwrap();
+        assert_eq!(hash.len(), 64);
+
+        assert!(ChecksumVerifier::verify_checksum(&file_path, &hash).unwrap());
+        assert!(!ChecksumVerifier::verify_checksum(&file_path, "0000000000000000000000000000000000000000000000000000000000000000").unwrap());
+    }
+}
+

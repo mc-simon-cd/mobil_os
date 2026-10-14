@@ -26,21 +26,22 @@ EXT4_MODULE="${WORKSPACE_DIR}/out/ext4.ko"
 JBD2_MODULE="${WORKSPACE_DIR}/out/jbd2.ko"
 MODULE_CACHE="${WORKSPACE_DIR}/out/.module_cache"
 
-DEBIAN_KERNEL_URL="http://ftp.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
-DEBIAN_NIC_POOL="http://ftp.debian.org/debian/pool/main/l/linux-signed-arm64"
+KERNEL_URLS=(
+    "http://deb.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
+    "http://ftp.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
+)
+DEBIAN_NIC_POOL="http://deb.debian.org/debian/pool/main/l/linux-signed-arm64"
 
 download_file() {
     local url="$1"
     local dest="$2"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o "$dest" "$url"
+        curl -C - -fsSL --retry 5 --retry-connrefused --connect-timeout 15 --max-time 300 -o "$dest" "$url"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$dest" "$url"
+        wget -c -q --timeout=15 --tries=5 -O "$dest" "$url"
     else
         echo "❌ [ERROR] Neither curl nor wget is installed on the host!"
-        echo "           Please install curl or wget first:"
-        echo "           sudo apt-get install curl -y"
         exit 1
     fi
 }
@@ -221,15 +222,34 @@ echo "============================================="
 echo "📥 Downloading Precompiled ARM64 Linux Kernel"
 echo "============================================="
 
+KERNEL_URLS=(
+    "http://deb.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
+    "https://deb.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
+    "http://ftp.debian.org/debian/dists/stable/main/installer-arm64/current/images/netboot/debian-installer/arm64/linux"
+)
+
 mkdir -p "$KERNEL_DIR"
 
-if [ -f "$KERNEL_IMAGE" ]; then
+if [ -f "$KERNEL_IMAGE" ] && [ "$(stat -c%s "$KERNEL_IMAGE" 2>/dev/null || echo 0)" -gt 30000000 ]; then
     echo "ℹ️  [INFO] Kernel already present: $KERNEL_IMAGE"
 else
-    echo "Using $(command -v curl >/dev/null && echo curl || echo wget) to download kernel..."
-    download_file "$DEBIAN_KERNEL_URL" "$KERNEL_IMAGE"
-    echo "✅ [SUCCESS] Kernel downloaded: $KERNEL_IMAGE"
-    echo "   Size: $(du -sh "$KERNEL_IMAGE" | cut -f1)"
+    success=0
+    for attempt in {1..10}; do
+        for url in "${KERNEL_URLS[@]}"; do
+            echo "Attempt $attempt downloading from: ${url}"
+            download_file "$url" "$KERNEL_IMAGE" || true
+            if [ -f "$KERNEL_IMAGE" ] && [ "$(stat -c%s "$KERNEL_IMAGE" 2>/dev/null || echo 0)" -gt 30000000 ]; then
+                echo "✅ [SUCCESS] Kernel downloaded from ${url}"
+                echo "   Size: $(du -sh "$KERNEL_IMAGE" | cut -f1)"
+                success=1
+                break 2
+            fi
+        done
+    done
+    if [ "$success" -ne 1 ]; then
+        echo "❌ [ERROR] Could not download Linux kernel image from any mirror."
+        exit 1
+    fi
 fi
 
 echo "============================================="

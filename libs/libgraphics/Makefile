@@ -1,29 +1,26 @@
-# Sub-Makefile for 2D Graphics Library (libs/libgraphics/Makefile)
-
-CC ?= aarch64-linux-gnu-gcc
-AR ?= aarch64-linux-gnu-ar
-CFLAGS := -Wall -Wextra -std=c99 -Iinclude -O2
+# Makefile for Rust-based 2D Graphics Library (libs/libgraphics/Makefile)
 
 OUT_DIR := ../../out/rootfs/system
-TARGET_LIB := $(OUT_DIR)/lib/libgraphics.a
 
-SRCS := src/graphics.c
-OBJS := $(SRCS:.c=.o)
+ifneq (,$(findstring aarch64,$(CC)))
+    TARGET_FLAG := --target aarch64-unknown-linux-gnu
+    CARGO_OUT_LIB := target/aarch64-unknown-linux-gnu/release/liblibgraphics.a
+else
+    TARGET_FLAG :=
+    CARGO_OUT_LIB := target/release/liblibgraphics.a
+endif
 
-all: $(TARGET_LIB)
-
-$(TARGET_LIB): $(OBJS)
+all:
 	@mkdir -p $(OUT_DIR)/lib
 	@mkdir -p $(OUT_DIR)/include
-	$(AR) rcs $@ $^
+	cargo build --release $(TARGET_FLAG)
+	@cp $(CARGO_OUT_LIB) $(OUT_DIR)/lib/libgraphics.a
 	@cp include/graphics.h $(OUT_DIR)/include/graphics.h
-	@echo "  ❇️ Packed Graphics static library: $@"
-
-src/%.o: src/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	@echo "  ❇️ Compiled and copied Rust-based libgraphics.a to: $(OUT_DIR)/lib/libgraphics.a"
 
 clean:
-	rm -f src/*.o $(TARGET_LIB)
+	cargo clean
+	rm -f $(OUT_DIR)/lib/libgraphics.a
 	rm -f $(OUT_DIR)/include/graphics.h
 
 .PHONY: all clean

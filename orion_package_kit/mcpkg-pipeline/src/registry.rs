@@ -290,6 +290,86 @@ exec_subprocess = "deny"
 
         Ok(json_val)
     }
+
+    /// Full-text search for packages matching query.
+    pub fn search_packages(&self, query: &str) -> Result<serde_json::Value, String> {
+        if self.base_url.starts_with("mock://") {
+            let results = vec![
+                serde_json::json!({
+                    "id": format!("com.orion.{}", query),
+                    "name": format!("Orion {}", query),
+                    "description": format!("Application matching search query '{}'", query),
+                    "version": "1.0.0",
+                    "rating": "ALL",
+                    "tier": "free",
+                    "price_usd": 0.0,
+                    "downloads_total": 4200,
+                    "trust_level": "verified"
+                })
+            ];
+            return Ok(serde_json::json!({
+                "query": query,
+                "total": results.len(),
+                "limit": 20,
+                "offset": 0,
+                "results": results
+            }));
+        }
+
+        let url = format!("{}/search?q={}", self.base_url, query);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+        let response = client.get(&url)
+            .send()
+            .map_err(|e| format!("Failed to send search request to {}: {}", url, e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("Registry search API returned error: {}", response.status()));
+        }
+
+        let json_val = response.json::<serde_json::Value>()
+            .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
+
+        Ok(json_val)
+    }
+
+    /// Fetches registered developer public keys from registry.
+    pub fn get_developer_keys(&self, developer_id: &str) -> Result<Vec<String>, String> {
+        if self.base_url.starts_with("mock://") {
+            return Ok(vec!["ORION_PUBLIC_KEY_V1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()]);
+        }
+
+        let url = format!("{}/developers/{}/keys", self.base_url, developer_id);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+        let response = client.get(&url)
+            .send()
+            .map_err(|e| format!("Failed to request developer keys: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("Failed to retrieve keys: HTTP {}", response.status()));
+        }
+
+        let json_val: serde_json::Value = response.json()
+            .map_err(|e| format!("Invalid JSON response: {}", e))?;
+
+        let mut keys = Vec::new();
+        if let Some(arr) = json_val.get("keys").and_then(|k| k.as_array()) {
+            for item in arr {
+                if let Some(k_str) = item.get("public_key").and_then(|s| s.as_str()) {
+                    keys.push(k_str.to_string());
+                }
+            }
+        }
+
+        Ok(keys)
+    }
 }
 
 pub struct CacheManager {

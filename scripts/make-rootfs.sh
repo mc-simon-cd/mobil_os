@@ -67,15 +67,7 @@ echo "🔨 [2/8] Compiling ARM64 init binary (static)..."
 INIT_SRC="${WORKSPACE}/core/init"
 INIT_BIN="${ROOTFS_STAGE}/sbin/init"
 
-$CC \
-    -Wall -Wextra -std=c99 -O2 \
-    -I"${INIT_SRC}/include" \
-    "${INIT_SRC}/src/main.c" \
-    "${INIT_SRC}/src/mount.c" \
-    "${INIT_SRC}/src/properties.c" \
-    "${INIT_SRC}/src/init.c" \
-    -o "$INIT_BIN" \
-    -static
+make -C "$INIT_SRC" CC="$CC" OUT_DIR="$ROOTFS_STAGE"
 echo "   ✅ /sbin/init: $(du -sh "$INIT_BIN" | cut -f1)"
 
 # /init — initramfs entry point (kernel looks for this first)

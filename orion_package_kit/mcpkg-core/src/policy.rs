@@ -72,3 +72,104 @@ impl SandboxPolicy {
         toml::to_string(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_parse_and_roundtrip() {
+        let toml_str = r#"
+[meta]
+policy_version = "1.0"
+strict_mode = true
+
+[filesystem]
+home_read = "allow"
+home_write = "deny"
+temp_access = "allow"
+documents_read = "ask"
+documents_write = "deny"
+downloads_read = "deny"
+system_read = "deny"
+arbitrary_path = "deny"
+
+[network]
+internet = "allow"
+localhost = "deny"
+local_network = "deny"
+
+[hardware]
+camera = "deny"
+microphone = "deny"
+gpu_access = "allow"
+usb_devices = "deny"
+bluetooth = "deny"
+location = "ask"
+
+[system]
+notifications = "allow"
+clipboard_read = "deny"
+clipboard_write = "deny"
+autostart = "deny"
+background_run = "deny"
+ipc = "deny"
+exec_subprocess = "deny"
+"#;
+
+        let policy = SandboxPolicy::from_toml(toml_str).unwrap();
+        assert_eq!(policy.meta.strict_mode, true);
+        assert_eq!(policy.filesystem.home_read, Permission::Allow);
+        assert_eq!(policy.filesystem.documents_read, Permission::Ask);
+        assert_eq!(policy.network.internet, Permission::Allow);
+        assert_eq!(policy.hardware.camera, Permission::Deny);
+
+        let serialized = policy.to_toml().unwrap();
+        let re_parsed = SandboxPolicy::from_toml(&serialized).unwrap();
+        assert_eq!(re_parsed.filesystem.home_read, Permission::Allow);
+    }
+
+    #[test]
+    fn test_policy_invalid_permission_fails() {
+        let invalid = r#"
+[meta]
+policy_version = "1.0"
+strict_mode = false
+
+[filesystem]
+home_read = "unsupported_value"
+home_write = "deny"
+temp_access = "allow"
+documents_read = "deny"
+documents_write = "deny"
+downloads_read = "deny"
+system_read = "deny"
+arbitrary_path = "deny"
+
+[network]
+internet = "deny"
+localhost = "deny"
+local_network = "deny"
+
+[hardware]
+camera = "deny"
+microphone = "deny"
+gpu_access = "deny"
+usb_devices = "deny"
+bluetooth = "deny"
+location = "deny"
+
+[system]
+notifications = "deny"
+clipboard_read = "deny"
+clipboard_write = "deny"
+autostart = "deny"
+background_run = "deny"
+ipc = "deny"
+exec_subprocess = "deny"
+"#;
+
+        assert!(SandboxPolicy::from_toml(invalid).is_err());
+    }
+}
+

@@ -17,6 +17,10 @@ extern "C" {
 }
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Start the wayland compositor. Returns true on success, false on failure.
 bool wl_compositor_init();
 
@@ -32,3 +36,7 @@ void wl_compositor_inject_touch(int type, int code, int value);
 
 // Force composition immediately (used by apigateway / IPC CMD_COMPOSITE).
 void wl_compositor_force_composite();
+
+#ifdef __cplusplus
+}
+#endif

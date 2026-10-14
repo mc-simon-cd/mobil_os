@@ -1,22 +1,29 @@
-# Sub-Makefile for Service Manager Daemon (services/servicemanager/Makefile)
-
-CC ?= aarch64-linux-gnu-gcc
-CFLAGS := -Wall -Wextra -std=c99 -Iinclude -I../../libs/libipc/include -O2
+# Sub-Makefile for Rust Service Manager Daemon (services/servicemanager/Makefile)
 
 OUT_DIR := ../../out/rootfs/system
 TARGET := $(OUT_DIR)/bin/servicemanager
 
-SRCS := src/main.c src/registry.c
-LIBIPC := ../../out/rootfs/system/lib/libipc.a
+# Check if CC is set to cross-compiler
+ifneq (,$(findstring aarch64,$(CC)))
+    TARGET_FLAG := --target aarch64-unknown-linux-gnu
+    CARGO_ENV := CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc RUSTFLAGS="-C target-feature=+crt-static"
+    BUILD_DIR := target/aarch64-unknown-linux-gnu/release
+else
+    TARGET_FLAG :=
+    CARGO_ENV :=
+    BUILD_DIR := target/release
+endif
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS) $(LIBIPC)
+$(TARGET): src/main.rs Cargo.toml
 	@mkdir -p $(OUT_DIR)/bin
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
-	@echo "  ❇️ Compiled Servicemanager process: $@"
+	$(CARGO_ENV) cargo build --release $(TARGET_FLAG)
+	@cp $(BUILD_DIR)/servicemanager $(TARGET)
+	@echo "  ❇️ Compiled Rust Servicemanager daemon: $@"
 
 clean:
+	cargo clean
 	rm -f $(TARGET)
 
 .PHONY: all clean

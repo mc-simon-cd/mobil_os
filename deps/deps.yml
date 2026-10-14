@@ -74,12 +74,21 @@ rust:
   targets:
     - aarch64-unknown-linux-gnu
   workspaces:
+    - core/init
+    - libs/libgraphics
+    - libs/libi18n
     - libs/libipc-rs
+    - services/surfaceflinger
     - services/apprunner
     - services/apigateway
     - services/powermanager
     - services/inputflinger
+    - ui/statusbar
+    - services/servicemanager
     - orion_package_kit
+    - apps/settings
+    - apps/dialer
+    - apps/launcher
 
 # Prebuilt kernel + network module download
 kernel:

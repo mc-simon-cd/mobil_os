@@ -20,22 +20,61 @@
 ## Usage
 
 ```bash
-# Install a package
-opk install app-1.0.0.opk
+# Paket arama ve kurma
+opk search editor
+opk install com.orion.editor -y
 
-# Verify package integrity
-opk verify app-1.0.0.opk
+# Uygulama çalıştırma ve durum kontrolü
+opk launch com.orion.editor
+opk list
+opk info com.orion.editor
 
-# Generate developer keys
+# Güncelleme ve kaldırma
+opk update com.orion.editor
+opk uninstall com.orion.editor --purge
+
+# Güvenlik ve denetim kayıtları (Orion Bekçi)
+opk audit list
+opk audit export -f json -o audit.json
+
+# Geliştirici araçları (Paketleme & İmzalama)
 opk keygen
+opk pack ./my_app -o my_app-1.0.0.opk
+opk sign my_app-1.0.0.opk
+opk verify my_app-1.0.0.opk
+opk publish my_app-1.0.0.opk
 ```
 
 ## Documentation
 
-Detailed technical specifications are available in the `docs/opk` directory.
-- [Format Spec](docs/opk/opk-format-spec.md)
-- [Pipeline Spec](docs/opk/opk-install-pipeline.md)
-- [Sandbox Impl](docs/opk/opk-sandbox-impl.md)
+Kapsamlı teknik dokümantasyon, şartnameler ve geliştirici kılavuzları `docs/` altında yer almaktadır:
+
+### Temel Kılavuzlar ve Şartnameler
+- [Mimari (ARCHITECTURE)](docs/ARCHITECTURE.md)
+- [CLI Referansı (CLI_REFERENCE)](docs/CLI_REFERENCE.md)
+- [Kurulum Kılavuzu (INSTALL)](docs/INSTALL.md)
+- [Güvenlik Politikası (SECURITY)](docs/SECURITY.md)
+- [Katkıda Bulunma (CONTRIBUTING)](docs/CONTRIBUTING.md)
+- [Değişiklik Günlüğü (CHANGELOG)](docs/CHANGELOG.md)
+- [Test Rehberi (TESTING)](docs/TESTING.md)
+- [Kullanım Şartları (TERMS / ŞARTLAR)](docs/TERMS.md) & [Türkçe Şartlar](docs/SARTLAR.md)
+
+### Özel Entegrasyon Rehberleri
+- [Veri Tasarrufu (DATA_SAVING_GUIDE)](docs/DATA_SAVING_GUIDE.md)
+- [Flatpak Uyumluluk (FLATPAK_PACKAGING_GUIDE)](docs/FLATPAK_PACKAGING_GUIDE.md)
+- [Ödeme Entegrasyonu (PAYMENT_INTEGRATION)](docs/PAYMENT_INTEGRATION.md)
+- [Özel Sunucu Barındırma (SELF_HOSTING_GUIDE)](docs/SELF_HOSTING_GUIDE.md)
+- [Uygulama Bağlama & IPC (UYGULAMA_BAGLAMA)](docs/UYGULAMA_BAGLAMA.md)
+- [Çeviri Rehberi (TRANSLATION_GUIDE)](docs/TRANSLATION_GUIDE.md)
+- [Versiyonlama (VERSION)](docs/VERSION.md)
+
+### OPK Teknik Spesifikasyonları (`docs/opk`)
+- [Format Şartnamesi](docs/opk/opk-format-spec.md)
+- [Kurulum Pipeline Şartnamesi](docs/opk/opk-install-pipeline.md)
+- [Sandbox Uygulama Şartnamesi](docs/opk/opk-sandbox-impl.md)
+- [Yaşam Döngüsü Şartnamesi](docs/opk/opk-lifecycle-spec.md)
+- [Yol Haritası & Eksikler](docs/opk/opk-roadmap.md)
+- [Proje İlerlemesi](progress.md)
 
 ---
 *Developed for the Orion OS ecosystem.*

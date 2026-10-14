@@ -2,6 +2,13 @@ pub mod launcher;
 pub use launcher::Launcher;
 pub mod registry;
 pub mod developer;
+pub mod lifecycle;
+pub use lifecycle::{LifecycleManager, InstalledApp, AppInfoSummary};
+pub mod bekci;
+pub use bekci::{
+    BekciEngine, BekciDecision, AuditLogger, AuditEntry, RiskScore, RiskLevel, TrustLevel,
+    BekciDaemon, BekciClient, IpcRequest, IpcResponse,
+};
 use mcpkg_core::Manifest;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -31,6 +38,7 @@ pub struct PipelineManager {
     pub state: InstallState,
     pub apps_root: PathBuf,
     pub desktop_dir: Option<PathBuf>,
+    pub assume_yes: bool,
 }
 
 impl PipelineManager {
@@ -38,8 +46,9 @@ impl PipelineManager {
         Self {
             package_path,
             state: InstallState::Idle,
-            apps_root: PathBuf::from("/tmp/orion/apps"),
+            apps_root: crate::lifecycle::LifecycleManager::get_default_apps_root(),
             desktop_dir: None,
+            assume_yes: false,
         }
     }
 
@@ -175,6 +184,21 @@ impl PipelineManager {
 
         println!("Package: {} v{}", manifest.package.id, manifest.package.version);
 
+        // 3.5 Validate OS Compatibility and Dependencies
+        let current_os = std::env::var("ORION_OS_VERSION").unwrap_or_else(|_| "1.0.0".to_string());
+        validate_os_compatibility(&current_os, &manifest.package.min_os, manifest.package.max_os.as_deref())?;
+
+        if let Some(ref deps) = manifest.dependencies {
+            if let Some(ref pkgs) = deps.packages {
+                for req_pkg in pkgs {
+                    let dep_path = self.apps_root.join(req_pkg);
+                    if !dep_path.exists() {
+                        println!("  ⚠️ Dikkat: Bağımlılık '{}' yüklü değil ({:?})", req_pkg, dep_path);
+                    }
+                }
+            }
+        }
+
         // 4. Verify Checksums
         self.state = InstallState::VerifyingChecksums;
         println!("Stage: Verifying Checksums...");
@@ -212,18 +236,75 @@ impl PipelineManager {
                 .map_err(|e| format!("Invalid public key: {}", e))?
         };
 
-        // d. Verification
-        match mcpkg_crypto::signing::CryptoManager::verify(&verifying_key, &message, &signature) {
+        // d. Verification & Trust Evaluation
+        let key_fp = crate::developer::calculate_fingerprint(verifying_key.as_bytes());
+        let (trust_level, is_sig_valid) = match mcpkg_crypto::signing::CryptoManager::verify(&verifying_key, &message, &signature) {
             Ok(_) => {
-                println!("  Signature Verified (TRUSTED)");
-                println!("  Key Fingerprint: {}", crate::developer::calculate_fingerprint(verifying_key.as_bytes()));
+                println!("  ✅ Signature Verified (TRUSTED)");
+                println!("  Key Fingerprint: {}", key_fp);
+                (crate::bekci::TrustLevel::Verified, true)
             }
-            Err(_) => println!("  WARNING: Signature Verification FAILED (UNTRUSTED)"),
+            Err(_) => {
+                println!("  ⚠️ WARNING: Signature Verification FAILED (UNTRUSTED)");
+                (crate::bekci::TrustLevel::Unsigned, false)
+            }
+        };
+
+        // Score policy using Bekçi engine
+        let risk_score = crate::bekci::BekciEngine::score_policy(&policy);
+        println!("  🛡️ Bekçi Güven Seviyesi: {}", trust_level);
+        println!("  📊 Politika Risk Skoru:    {}/100 ({})", risk_score.total, risk_score.level);
+        for flag in &risk_score.flags {
+            println!("     • [{}] {}", flag.permission, flag.message);
         }
 
         // 6. User Confirmation
         self.state = InstallState::AwaitingUserConfirmation;
         println!("Stage: Awaiting User Confirmation...");
+
+        let user_approved = if self.assume_yes || cfg!(test) || std::env::var("ORION_NON_INTERACTIVE").is_ok() {
+            println!("  ⚡ Otomatik onaylandı (--yes bayrağı veya test ortamı aktif).");
+            true
+        } else {
+            use std::io::IsTerminal;
+            if std::io::stdin().is_terminal() {
+                use std::io::Write;
+                print!("\nBu paketi kurmak istiyor musunuz? [e/H] (varsayılan: Hayır): ");
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                if std::io::stdin().read_line(&mut input).is_ok() {
+                    let trimmed = input.trim().to_lowercase();
+                    trimmed == "e" || trimmed == "evet" || trimmed == "y" || trimmed == "yes"
+                } else {
+                    false
+                }
+            } else {
+                // Non-terminal ortam (otomasyon/test): varsayılan onay
+                true
+            }
+        };
+
+        if !user_approved {
+            println!("  ❌ Kurulum kullanıcı tarafından iptal edildi.");
+            let audit_db = crate::bekci::AuditLogger::get_default_db_path();
+            let audit_entry = crate::bekci::AuditEntry {
+                id: None,
+                timestamp: crate::bekci::get_current_timestamp_iso(),
+                action: "install".to_string(),
+                package_id: app_id.clone(),
+                version: manifest.package.version.clone(),
+                trust_level,
+                risk_level: risk_score.level,
+                risk_score: risk_score.total,
+                user_choice: "declined".to_string(),
+                warnings: risk_score.flags.iter().map(|f| f.message.clone()).collect(),
+                checksum_ok: true,
+                sig_ok: is_sig_valid,
+                key_fp: Some(key_fp),
+            };
+            let _ = crate::bekci::AuditLogger::log_event(&audit_db, &audit_entry);
+            return Err("Kurulum kullanıcı tarafından iptal edildi.".to_string());
+        }
 
         // 7. Prepare Container & Staging
         self.state = InstallState::PreparingContainer;
@@ -318,7 +399,7 @@ impl PipelineManager {
         };
         *has_backup_ref.lock().unwrap() = has_backup;
 
-        let staging_path = staging_dir.into_path();
+        let staging_path = staging_dir.keep();
         if let Err(e) = std::fs::rename(&staging_path, &target_dir) {
             let _ = std::fs::remove_dir_all(&staging_path);
             return Err(format!("Failed to rename staging to target (atomic move): {}", e));
@@ -350,6 +431,38 @@ impl PipelineManager {
         std::fs::write(&desktop_path, desktop_content)
             .map_err(|e| format!("Failed to write desktop entry: {}", e))?;
         *created_desktop_ref.lock().unwrap() = true;
+
+        // Copy icon if present
+        if let Ok(icons_dir) = crate::lifecycle::LifecycleManager::get_default_icons_dir() {
+            let _ = std::fs::create_dir_all(&icons_dir);
+            let app_icon = target_dir.join("assets/icon.png");
+            if app_icon.exists() {
+                let _ = std::fs::copy(&app_icon, icons_dir.join(format!("{}.png", app_id)));
+            }
+        }
+
+        // Record SQLite audit log
+        let audit_db = crate::bekci::AuditLogger::get_default_db_path();
+        let audit_entry = crate::bekci::AuditEntry {
+            id: None,
+            timestamp: crate::bekci::get_current_timestamp_iso(),
+            action: "install".to_string(),
+            package_id: app_id.clone(),
+            version: manifest.package.version.clone(),
+            trust_level,
+            risk_level: risk_score.level,
+            risk_score: risk_score.total,
+            user_choice: "approved".to_string(),
+            warnings: risk_score.flags.iter().map(|f| f.message.clone()).collect(),
+            checksum_ok: true,
+            sig_ok: is_sig_valid,
+            key_fp: Some(key_fp),
+        };
+        if let Err(e) = crate::bekci::AuditLogger::log_event(&audit_db, &audit_entry) {
+            println!("  ⚠️ Warning: Failed to record audit log: {}", e);
+        } else {
+            println!("  Audit log recorded in {:?}", audit_db);
+        }
 
         // If successful, remove the backup
         if has_backup && backup_dir.exists() {
@@ -442,6 +555,36 @@ fn run_script_in_sandbox(
         return Err(format!("Script exited with non-zero status: {:?}", status.code()));
     }
 
+    Ok(())
+}
+
+pub fn parse_version_tuple(v: &str) -> (u64, u64, u64) {
+    let clean = v.trim().trim_start_matches('v');
+    let mut parts = clean.split('.');
+    let major = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let patch = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    (major, minor, patch)
+}
+
+pub fn validate_os_compatibility(current: &str, min: &str, max: Option<&str>) -> Result<(), String> {
+    let cur = parse_version_tuple(current);
+    let min_v = parse_version_tuple(min);
+    if cur < min_v {
+        return Err(format!(
+            "Mevcut sistem sürümü ({}) paketin asgari gereksinimini ({}) karşılamıyor",
+            current, min
+        ));
+    }
+    if let Some(max_s) = max {
+        let max_v = parse_version_tuple(max_s);
+        if cur > max_v {
+            return Err(format!(
+                "Mevcut sistem sürümü ({}) paketin azami destek sınırını ({}) aşıyor",
+                current, max_s
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -720,5 +863,13 @@ exec_subprocess = "deny"
         let manifest_content_after = std::fs::read_to_string(target_dir.join("manifest.toml")).unwrap();
         assert!(manifest_content_after.contains("Upgrade App V1")); // restored!
         assert!(!manifest_content_after.contains("Upgrade App V2"));
+    }
+
+    #[test]
+    fn test_validate_os_compatibility() {
+        assert!(validate_os_compatibility("1.0.0", "1.0.0", None).is_ok());
+        assert!(validate_os_compatibility("1.2.0", "1.0.0", Some("2.0.0")).is_ok());
+        assert!(validate_os_compatibility("0.9.0", "1.0.0", None).is_err());
+        assert!(validate_os_compatibility("2.1.0", "1.0.0", Some("2.0.0")).is_err());
     }
 }

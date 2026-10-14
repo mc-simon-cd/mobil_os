@@ -1,0 +1,10 @@
+[package]
+name = "statusbar"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+libipc-rs = { path = "../../libs/libipc-rs" }
+libgraphics = { path = "../../libs/libgraphics" }
+libi18n = { path = "../../libs/libi18n" }

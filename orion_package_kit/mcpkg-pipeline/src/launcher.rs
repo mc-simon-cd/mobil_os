@@ -35,9 +35,15 @@ impl Launcher {
         AppArmorGenerator::load_profile(app_id, &profile_content)
             .map_err(|e| format!("Failed to load AppArmor profile: {}", e))?;
 
-        // 3. Prepare Command and child process hook (pre_exec)
-        let binary_path = app_dir.join(&manifest.build.entry_x86_64);
-        println!("  Executing binary: {:?}", binary_path);
+        // 3. Select Binary according to Host Architecture
+        let host_arch = std::env::consts::ARCH;
+        let entry_rel = if host_arch == "aarch64" {
+            manifest.build.entry_aarch64.as_deref().unwrap_or(&manifest.build.entry_x86_64)
+        } else {
+            &manifest.build.entry_x86_64
+        };
+        let binary_path = app_dir.join(entry_rel);
+        println!("  Target architecture: {} (Binary: {:?})", host_arch, binary_path);
 
         use std::os::unix::process::CommandExt;
         let mut command = Command::new(&binary_path);
@@ -45,6 +51,7 @@ impl Launcher {
         let uid = nix::unistd::getuid();
         let gid = nix::unistd::getgid();
         let policy_clone = policy.clone();
+        let app_id_owned = app_id.to_string();
 
         unsafe {
             command.pre_exec(move || {
@@ -57,8 +64,8 @@ impl Launcher {
                                 return Err(e);
                             }
                         }
-                        // Setup mount namespace rules (make mounts private)
-                        if let Err(e) = NamespaceManager::setup_mount_namespace() {
+                        // Setup advanced mount isolation (private mounts, private tmp)
+                        if let Err(e) = NamespaceManager::setup_mount_isolation(&app_id_owned, &policy_clone) {
                             if policy_clone.meta.strict_mode {
                                 return Err(e);
                             }
@@ -85,7 +92,17 @@ impl Launcher {
         let mut child = command.spawn()
             .map_err(|e| format!("Failed to execute binary: {}", e))?;
 
+        // d. Setup cgroups v2 limits and attach spawned process
+        let limits = mcpkg_sandbox::ResourceLimits {
+            cpu_percent: manifest.resources.as_ref().and_then(|r| r.cpu_percent),
+            memory_bytes: manifest.resources.as_ref().and_then(|r| r.memory_mb).map(|mb| mb * 1024 * 1024),
+        };
+        if let Err(e) = mcpkg_sandbox::CgroupManager::setup_cgroup(app_id, &limits, child.id()) {
+            println!("  ℹ️ cgroups v2 setup notice: {}", e);
+        }
+
         let status = child.wait().map_err(|e| format!("Process execution failed: {}", e))?;
+        let _ = mcpkg_sandbox::CgroupManager::remove_cgroup(app_id);
         println!("App exited with status: {}", status);
 
         Ok(())
